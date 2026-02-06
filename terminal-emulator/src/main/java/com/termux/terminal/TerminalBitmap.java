@@ -155,7 +155,7 @@ public class TerminalBitmap {
     }
         
     static public Bitmap resizeBitmap(Bitmap bm, int w, int h) {
-        int[] pixels = new int[bm.getAllocationByteCount()];
+        int[] pixels = new int[bm.getWidth() * bm.getHeight()];
         bm.getPixels(pixels, 0, bm.getWidth(), 0, 0, bm.getWidth(), bm.getHeight());
         Bitmap newbm;
         try {

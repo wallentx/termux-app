@@ -429,7 +429,7 @@ public final class TerminalBuffer {
                     }
                 }
                 TerminalRow nextLine =  mLines[(blankRow + 1) % mTotalRows];
-                if(nextLine.mHasBitmap) {
+                if(nextLine != null && nextLine.mHasBitmap) {
                     for (int column = 0; column < mColumns; column++) {
                         final long st = nextLine.getStyle(column);
                         if (TextStyle.isBitmap(st)) {

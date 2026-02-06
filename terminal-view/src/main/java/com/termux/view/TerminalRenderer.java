@@ -97,6 +97,9 @@ public final class TerminalRenderer {
             int currentCharIndex = 0;
             float measuredWidthForRun = 0.f;
 
+            // Recycle RectF to avoid allocations in loop
+            RectF reusableRect = new RectF();
+
             for (int column = 0; column < columns; ) {
                 final char charAtIndex = line[currentCharIndex];
                 final boolean charIsHighsurrogate = Character.isHighSurrogate(charAtIndex);
@@ -108,14 +111,14 @@ public final class TerminalRenderer {
                     if (bm != null) {
                         float left = column * mFontWidth;
                         float top = heightOffset - mFontLineSpacing;
-                        RectF r = new RectF(left, top, left + mFontWidth, top + mFontLineSpacing);
-                        canvas.drawBitmap(mEmulator.getScreen().getSixelBitmap(codePoint, style), mEmulator.getScreen().getSixelRect(codePoint, style), r, null);
+                        reusableRect.set(left, top, left + mFontWidth, top + mFontLineSpacing);
+                        canvas.drawBitmap(bm, mEmulator.getScreen().getSixelRect(codePoint, style), reusableRect, null);
                     }
                     column += 1;
                     measuredWidthForRun = 0.f;
                     lastRunStyle = 0;
                     lastRunInsideCursor = false;
-                    lastRunStartColumn = column + 1;
+                    lastRunStartColumn = column;
                     lastRunStartIndex = currentCharIndex;
                     lastRunFontWidthMismatch = false;
                     currentCharIndex += charsForCodePoint;

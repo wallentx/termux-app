@@ -27,7 +27,9 @@ public final class WorkingTerminalBitmap {
             Logger.logWarn(null, LOG_TAG, "Out of memory - sixel ignored");
             bitmap = null;
         }
-        bitmap.eraseColor(0);
+        if (bitmap != null) {
+            bitmap.eraseColor(0);
+        }
         width = 0;
         height = 0;
         curX = 0;

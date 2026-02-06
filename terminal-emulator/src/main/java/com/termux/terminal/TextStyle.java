@@ -98,7 +98,7 @@ public final class TextStyle {
     }
 
     public static int bitmapNum(long style) {
-        return (int)(style & 0xffff0000) >> 16;
+        return (int) ((style >>> 16) & 0xFFFFL);
     }
 
     public static int bitmapX(long style) {

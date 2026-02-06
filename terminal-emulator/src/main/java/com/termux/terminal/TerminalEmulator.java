@@ -2,6 +2,7 @@ package com.termux.terminal;
 
 import android.util.Base64;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -84,6 +85,10 @@ public final class TerminalEmulator {
     private static final int ESC_APC = 20;
     /** Escape processing: "ESC _" or Application Program Command (APC), followed by Escape. */
     private static final int ESC_APC_ESC = 21;
+    /** Escape processing: ESC [ <parameter bytes> */
+    private static final int ESC_CSI_UNSUPPORTED_PARAMETER_BYTE = 22;
+    /** Escape processing: ESC [ <parameter bytes> <intermediate bytes> */
+    private static final int ESC_CSI_UNSUPPORTED_INTERMEDIATE_BYTE = 23;
 
     /** The number of parameter arguments including colon separated sub-parameters. */
     private static final int MAX_ESCAPE_PARAMETERS = 32;
@@ -195,7 +200,7 @@ public final class TerminalEmulator {
     private int mEscapeState;
     private boolean ESC_P_escape = false;
     private boolean ESC_P_sixel = false;
-    private ArrayList<Byte> ESC_OSC_data;
+    private ByteArrayOutputStream ESC_OSC_data;
     private int ESC_OSC_colon = 0;
     private boolean ESC_OSC_outofmem = false;
 
@@ -1940,20 +1945,18 @@ public final class TerminalEmulator {
                 continueSequence(ESC_APC_ESC);
                 break;
             default:
-                collectOSCArgs(b);
-                continueSequence(ESC_OSC);
+                break;
         }
     }
 
     private void doApcEsc(int b) {
         switch (b) {
             case '\\':
+                finishSequence();
                 break;
             default:
                 // The ESC character was not followed by a \, so insert the ESC and
                 // the current character in arg buffer.
-                collectOSCArgs(27);
-                collectOSCArgs(b);
                 continueSequence(ESC_APC);
                 break;
         }
@@ -1972,15 +1975,13 @@ public final class TerminalEmulator {
                 if (ESC_OSC_colon == -1 && b == ':') {
                     // Collect base64 data for OSC 1337
                     ESC_OSC_colon = mOSCOrDeviceControlArgs.length();
-                    ESC_OSC_data = new ArrayList<Byte>(65536);
+                    ESC_OSC_data = new ByteArrayOutputStream();
                     ESC_OSC_outofmem = false;
                 } else if (ESC_OSC_colon >= 0 && mOSCOrDeviceControlArgs.length() - ESC_OSC_colon == 4) {
                     if (!ESC_OSC_outofmem) {
                     try {
                         byte[] decoded = Base64.decode(mOSCOrDeviceControlArgs.substring(ESC_OSC_colon), 0);
-                        for (int i = 0 ; i < decoded.length; i++) {
-                            ESC_OSC_data.add(decoded[i]);
-                        }
+                        ESC_OSC_data.write(decoded, 0, decoded.length);
                     } catch(Exception e) {
                         // Ignore non-Base64 data.
                     } catch(OutOfMemoryError e) {
@@ -2165,7 +2166,7 @@ public final class TerminalEmulator {
                         }
                         int semicolonpos = textParameter.indexOf(';', eqpos);
                         if (semicolonpos == -1) {
-                            semicolonpos = textParameter.length() - 1;
+                            semicolonpos = textParameter.length();
                         }
                         String k = textParameter.substring(pos, eqpos);
                         String v = textParameter.substring(eqpos + 1, semicolonpos);
@@ -2219,19 +2220,14 @@ public final class TerminalEmulator {
                         }
                         try {
                             byte[] decoded = Base64.decode(mOSCOrDeviceControlArgs.substring(osc_colon), 0);
-                            for (int i = 0 ; i < decoded.length; i++) {
-                                ESC_OSC_data.add(decoded[i]);
-                            }
+                            ESC_OSC_data.write(decoded, 0, decoded.length);
                         } catch(Exception e) {
                             // Ignore non-Base64 data.
                         }
                         mOSCOrDeviceControlArgs.setLength(osc_colon);
                     }
                     if (osc_colon >= 0) {
-                        byte[] result = new byte[ESC_OSC_data.size()];
-                        for(int i = 0; i < ESC_OSC_data.size(); i++) {
-                            result[i] = ESC_OSC_data.get(i).byteValue();
-                        }
+                        byte[] result = ESC_OSC_data.toByteArray();
                         int[] res = mScreen.addImage(result, mCursorRow, mCursorCol, cellW, cellH, width, height, aspect);
                         int col = res[1] + mCursorCol;
                         if (col < mColumns -1) {
@@ -2243,11 +2239,11 @@ public final class TerminalEmulator {
                             doLinefeed();
                         }
                         mCursorCol = col;
-                        ESC_OSC_data.clear();
+                        ESC_OSC_data = null;
                     } else {
                     }
                 } else if (textParameter.startsWith("ReportCellSize")) {
-                    mSession.write(String.format(Locale.US, "\0331337;ReportCellSize=%d;%d\007", cellH, cellW));
+                    mSession.write(String.format(Locale.US, "\033]1337;ReportCellSize=%d;%d\007", cellH, cellW));
                 }
                 break;
             default:
