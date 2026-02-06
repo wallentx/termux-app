@@ -709,6 +709,162 @@ public final class TerminalEmulator {
                     case ESC_CSI_BIGGERTHAN:
                         doCsiBiggerThan(b);
                         break;
+                    case ESC_CSI_DOUBLE_QUOTE:
+                        if (b == 'q') {
+                            // http://www.vt100.net/docs/vt510-rm/DECSCA
+                            int arg = getArg0(0);
+                            if (arg == 0 || arg == 2) {
+                                // DECSED and DECSEL can erase characters.
+                                mEffect &= ~TextStyle.CHARACTER_ATTRIBUTE_PROTECTED;
+                            } else if (arg == 1) {
+                                // DECSED and DECSEL cannot erase characters.
+                                mEffect |= TextStyle.CHARACTER_ATTRIBUTE_PROTECTED;
+                            } else {
+                                unknownSequence(b);
+                            }
+                        } else {
+                            unknownSequence(b);
+                        }
+                        break;
+                    case ESC_CSI_SINGLE_QUOTE:
+                        if (b == '}') { // Insert Ps Column(s) (default = 1) (DECIC), VT420 and up.
+                            int columnsAfterCursor = mRightMargin - mCursorCol;
+                            int columnsToInsert = Math.min(getArg0(1), columnsAfterCursor);
+                            int columnsToMove = columnsAfterCursor - columnsToInsert;
+                            mScreen.blockCopy(mCursorCol, 0, columnsToMove, mRows, mCursorCol + columnsToInsert, 0);
+                            blockClear(mCursorCol, 0, columnsToInsert, mRows);
+                        } else if (b == '~') { // Delete Ps Column(s) (default = 1) (DECDC), VT420 and up.
+                            int columnsAfterCursor = mRightMargin - mCursorCol;
+                            int columnsToDelete = Math.min(getArg0(1), columnsAfterCursor);
+                            int columnsToMove = columnsAfterCursor - columnsToDelete;
+                            mScreen.blockCopy(mCursorCol + columnsToDelete, 0, columnsToMove, mRows, mCursorCol, 0);
+                        } else {
+                            unknownSequence(b);
+                        }
+                        break;
+                    case ESC_CSI_DOLLAR:
+                        boolean originMode = isDecsetInternalBitSet(DECSET_BIT_ORIGIN_MODE);
+                        int effectiveTopMargin = originMode ? mTopMargin : 0;
+                        int effectiveBottomMargin = originMode ? mBottomMargin : mRows;
+                        int effectiveLeftMargin = originMode ? mLeftMargin : 0;
+                        int effectiveRightMargin = originMode ? mRightMargin : mColumns;
+                        switch (b) {
+                            case 'v': // ${CSI}${SRC_TOP}${SRC_LEFT}${SRC_BOTTOM}${SRC_RIGHT}${SRC_PAGE}${DST_TOP}${DST_LEFT}${DST_PAGE}$v"
+                                // Copy rectangular area (DECCRA - http://vt100.net/docs/vt510-rm/DECCRA):
+                                // "If Pbs is greater than Pts, or Pls is greater than Prs, the terminal ignores DECCRA.
+                                // The coordinates of the rectangular area are affected by the setting of origin mode (DECOM).
+                                // DECCRA is not affected by the page margins.
+                                // The copied text takes on the line attributes of the destination area.
+                                // If the value of Pt, Pl, Pb, or Pr exceeds the width or height of the active page, then the value
+                                // is treated as the width or height of that page.
+                                // If the destination area is partially off the page, then DECCRA clips the off-page data.
+                                // DECCRA does not change the active cursor position."
+                                int topSource = Math.min(getArg(0, 1, true) - 1 + effectiveTopMargin, mRows);
+                                int leftSource = Math.min(getArg(1, 1, true) - 1 + effectiveLeftMargin, mColumns);
+                                // Inclusive, so do not subtract one:
+                                int bottomSource = Math.min(Math.max(getArg(2, mRows, true) + effectiveTopMargin, topSource), mRows);
+                                int rightSource = Math.min(Math.max(getArg(3, mColumns, true) + effectiveLeftMargin, leftSource), mColumns);
+                                // int sourcePage = getArg(4, 1, true);
+                                int destionationTop = Math.min(getArg(5, 1, true) - 1 + effectiveTopMargin, mRows);
+                                int destinationLeft = Math.min(getArg(6, 1, true) - 1 + effectiveLeftMargin, mColumns);
+                                // int destinationPage = getArg(7, 1, true);
+                                int heightToCopy = Math.min(mRows - destionationTop, bottomSource - topSource);
+                                int widthToCopy = Math.min(mColumns - destinationLeft, rightSource - leftSource);
+                                mScreen.blockCopy(leftSource, topSource, widthToCopy, heightToCopy, destinationLeft, destionationTop);
+                                break;
+                            case '{': // ${CSI}${TOP}${LEFT}${BOTTOM}${RIGHT}${"
+                                // Selective erase rectangular area (DECSERA - http://www.vt100.net/docs/vt510-rm/DECSERA).
+                            case 'x': // ${CSI}${CHAR};${TOP}${LEFT}${BOTTOM}${RIGHT}$x"
+                                // Fill rectangular area (DECFRA - http://www.vt100.net/docs/vt510-rm/DECFRA).
+                            case 'z': // ${CSI}$${TOP}${LEFT}${BOTTOM}${RIGHT}$z"
+                                // Erase rectangular area (DECERA - http://www.vt100.net/docs/vt510-rm/DECERA).
+                                boolean erase = b != 'x';
+                                boolean selective = b == '{';
+                                // Only DECSERA keeps visual attributes, DECERA does not:
+                                boolean keepVisualAttributes = erase && selective;
+                                int argIndex = 0;
+                                int fillChar = erase ? ' ' : getArg(argIndex++, -1, true);
+                                // "Pch can be any value from 32 to 126 or from 160 to 255. If Pch is not in this range, then the
+                                // terminal ignores the DECFRA command":
+                                if ((fillChar >= 32 && fillChar <= 126) || (fillChar >= 160 && fillChar <= 255)) {
+                                    // "If the value of Pt, Pl, Pb, or Pr exceeds the width or height of the active page, the value
+                                    // is treated as the width or height of that page."
+                                    int top = Math.min(getArg(argIndex++, 1, true) + effectiveTopMargin, effectiveBottomMargin + 1);
+                                    int left = Math.min(getArg(argIndex++, 1, true) + effectiveLeftMargin, effectiveRightMargin + 1);
+                                    int bottom = Math.min(getArg(argIndex++, mRows, true) + effectiveTopMargin, effectiveBottomMargin);
+                                    int right = Math.min(getArg(argIndex, mColumns, true) + effectiveLeftMargin, effectiveRightMargin);
+                                    long style = getStyle();
+                                    for (int row = top - 1; row < bottom; row++)
+                                        for (int col = left - 1; col < right; col++)
+                                            if (!selective || (TextStyle.decodeEffect(mScreen.getStyleAt(row, col)) & TextStyle.CHARACTER_ATTRIBUTE_PROTECTED) == 0)
+                                                mScreen.setChar(col, row, fillChar, keepVisualAttributes ? mScreen.getStyleAt(row, col) : style);
+                                }
+                                break;
+                            case 'r': // "${CSI}${TOP}${LEFT}${BOTTOM}${RIGHT}${ATTRIBUTES}$r"
+                                // Change attributes in rectangular area (DECCARA - http://vt100.net/docs/vt510-rm/DECCARA).
+                            case 't': // "${CSI}${TOP}${LEFT}${BOTTOM}${RIGHT}${ATTRIBUTES}$t"
+                                // Reverse attributes in rectangular area (DECRARA - http://www.vt100.net/docs/vt510-rm/DECRARA).
+                                boolean reverse = b == 't';
+                                // FIXME: "coordinates of the rectangular area are affected by the setting of origin mode (DECOM)".
+                                int top = Math.min(getArg(0, 1, true) - 1, effectiveBottomMargin) + effectiveTopMargin;
+                                int left = Math.min(getArg(1, 1, true) - 1, effectiveRightMargin) + effectiveLeftMargin;
+                                int bottom = Math.min(getArg(2, mRows, true), effectiveBottomMargin) + effectiveTopMargin;
+                                int right = Math.min(getArg(3, mColumns, true), effectiveRightMargin) + effectiveLeftMargin;
+                                if (mArgIndex >= 4) {
+                                    if (mArgIndex >= mArgs.length) mArgIndex = mArgs.length - 1;
+                                    for (int i = 4; i <= mArgIndex; i++) {
+                                        int bits = 0;
+                                        boolean setOrClear = true; // True if setting, false if clearing.
+                                        switch (getArg(i, 0, false)) {
+                                            case 0: // Attributes off (no bold, no underline, no blink, positive image).
+                                                bits = (TextStyle.CHARACTER_ATTRIBUTE_BOLD | TextStyle.CHARACTER_ATTRIBUTE_UNDERLINE | TextStyle.CHARACTER_ATTRIBUTE_BLINK
+                                                    | TextStyle.CHARACTER_ATTRIBUTE_INVERSE);
+                                                if (!reverse) setOrClear = false;
+                                                break;
+                                            case 1: // Bold.
+                                                bits = TextStyle.CHARACTER_ATTRIBUTE_BOLD;
+                                                break;
+                                            case 4: // Underline.
+                                                bits = TextStyle.CHARACTER_ATTRIBUTE_UNDERLINE;
+                                                break;
+                                            case 5: // Blink.
+                                                bits = TextStyle.CHARACTER_ATTRIBUTE_BLINK;
+                                                break;
+                                            case 7: // Negative image.
+                                                bits = TextStyle.CHARACTER_ATTRIBUTE_INVERSE;
+                                                break;
+                                            case 22: // No bold.
+                                                bits = TextStyle.CHARACTER_ATTRIBUTE_BOLD;
+                                                setOrClear = false;
+                                                break;
+                                            case 24: // No underline.
+                                                bits = TextStyle.CHARACTER_ATTRIBUTE_UNDERLINE;
+                                                setOrClear = false;
+                                                break;
+                                            case 25: // No blink.
+                                                bits = TextStyle.CHARACTER_ATTRIBUTE_BLINK;
+                                                setOrClear = false;
+                                                break;
+                                            case 27: // Positive image.
+                                                bits = TextStyle.CHARACTER_ATTRIBUTE_INVERSE;
+                                                setOrClear = false;
+                                                break;
+                                        }
+                                        if (reverse && !setOrClear) {
+                                            // Reverse attributes in rectangular area ignores non-(1,4,5,7) bits.
+                                        } else {
+                                            mScreen.setOrClearEffect(bits, setOrClear, reverse, isDecsetInternalBitSet(DECSET_BIT_RECTANGULAR_CHANGEATTRIBUTE),
+                                                effectiveLeftMargin, effectiveRightMargin, top, left, bottom, right);
+                                        }
+                                    }
+                                } else {
+                                    // Do nothing.
+                                }
+                                break;
+                            default:
+                                unknownSequence(b);
+                        }
+                        break;
                     case ESC_PERCENT:
                         break;
                     case ESC_APC:
