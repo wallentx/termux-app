@@ -1,8 +1,11 @@
 package com.termux.view;
 
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 
 import com.termux.terminal.TerminalBuffer;
@@ -65,6 +68,7 @@ public final class TerminalRenderer {
         final TerminalBuffer screen = mEmulator.getScreen();
         final int[] palette = mEmulator.mColors.mCurrentColors;
         final int cursorShape = mEmulator.getCursorStyle();
+        mEmulator.setCellSize((int)mFontWidth, (int)mFontLineSpacing);
 
         if (reverseVideo)
             canvas.drawColor(palette[TextStyle.COLOR_INDEX_FOREGROUND], PorterDuff.Mode.SRC);
@@ -93,15 +97,38 @@ public final class TerminalRenderer {
             int currentCharIndex = 0;
             float measuredWidthForRun = 0.f;
 
+            // Recycle RectF to avoid allocations in loop
+            RectF reusableRect = new RectF();
+            Rect reusableSourceRect = new Rect();
+
             for (int column = 0; column < columns; ) {
                 final char charAtIndex = line[currentCharIndex];
                 final boolean charIsHighsurrogate = Character.isHighSurrogate(charAtIndex);
                 final int charsForCodePoint = charIsHighsurrogate ? 2 : 1;
                 final int codePoint = charIsHighsurrogate ? Character.toCodePoint(charAtIndex, line[currentCharIndex + 1]) : charAtIndex;
+                final long style = lineObject.getStyle(column);
+                if (TextStyle.isBitmap(style)) {
+                    Bitmap bm = mEmulator.getScreen().getSixelBitmap(codePoint, style);
+                    if (bm != null) {
+                        float left = column * mFontWidth;
+                        float top = heightOffset - mFontLineSpacing;
+                        reusableRect.set(left, top, left + mFontWidth, top + mFontLineSpacing);
+                        mEmulator.getScreen().getSixelRect(style, reusableSourceRect);
+                        canvas.drawBitmap(bm, reusableSourceRect, reusableRect, null);
+                    }
+                    column += 1;
+                    measuredWidthForRun = 0.f;
+                    lastRunStyle = 0;
+                    lastRunInsideCursor = false;
+                    lastRunStartColumn = column;
+                    lastRunStartIndex = currentCharIndex;
+                    lastRunFontWidthMismatch = false;
+                    currentCharIndex += charsForCodePoint;
+                    continue;
+                }
                 final int codePointWcWidth = WcWidth.width(codePoint);
                 final boolean insideCursor = (cursorX == column || (codePointWcWidth == 2 && cursorX == column + 1));
                 final boolean insideSelection = column >= selx1 && column <= selx2;
-                final long style = lineObject.getStyle(column);
 
                 // Check if the measured text width for this code point is not the same as that expected by wcwidth().
                 // This could happen for some fonts which are not truly monospace, or for more exotic characters such as
@@ -112,7 +139,7 @@ public final class TerminalRenderer {
                 final boolean fontWidthMismatch = Math.abs(measuredCodePointWidth / mFontWidth - codePointWcWidth) > 0.01;
 
                 if (style != lastRunStyle || insideCursor != lastRunInsideCursor || insideSelection != lastRunInsideSelection || fontWidthMismatch || lastRunFontWidthMismatch) {
-                    if (column == 0) {
+                    if (column == 0 || column == lastRunStartColumn) {
                         // Skip first column as there is nothing to draw, just record the current style.
                     } else {
                         final int columnWidthSinceLastRun = column - lastRunStartColumn;
