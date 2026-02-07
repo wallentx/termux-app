@@ -99,6 +99,7 @@ public final class TerminalRenderer {
 
             // Recycle RectF to avoid allocations in loop
             RectF reusableRect = new RectF();
+            Rect reusableSourceRect = new Rect();
 
             for (int column = 0; column < columns; ) {
                 final char charAtIndex = line[currentCharIndex];
@@ -112,7 +113,8 @@ public final class TerminalRenderer {
                         float left = column * mFontWidth;
                         float top = heightOffset - mFontLineSpacing;
                         reusableRect.set(left, top, left + mFontWidth, top + mFontLineSpacing);
-                        canvas.drawBitmap(bm, mEmulator.getScreen().getSixelRect(codePoint, style), reusableRect, null);
+                        mEmulator.getScreen().getSixelRect(style, reusableSourceRect);
+                        canvas.drawBitmap(bm, reusableSourceRect, reusableRect, null);
                     }
                     column += 1;
                     measuredWidthForRun = 0.f;

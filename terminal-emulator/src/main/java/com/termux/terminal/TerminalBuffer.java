@@ -541,15 +541,22 @@ public final class TerminalBuffer {
     }
 
     public Bitmap getSixelBitmap(int codePoint, long style) {
-        return bitmaps.get(TextStyle.bitmapNum(style)).bitmap;
+        TerminalBitmap terminalBitmap = bitmaps.get(TextStyle.bitmapNum(style));
+        if (terminalBitmap == null) {
+            return null;
+        }
+        return terminalBitmap.bitmap;
     }
 
-    public Rect getSixelRect(int codePoint, long style ) {
+    public void getSixelRect(long style, Rect out) {
         TerminalBitmap bm = bitmaps.get(TextStyle.bitmapNum(style));
+        if (bm == null) {
+            out.setEmpty();
+            return;
+        }
         int x = TextStyle.bitmapX(style);
         int y = TextStyle.bitmapY(style);
-        Rect r = new Rect(x * bm.cellWidth, y * bm.cellHeight, (x+1) * bm.cellWidth, (y+1) * bm.cellHeight);
-        return r;
+        out.set(x * bm.cellWidth, y * bm.cellHeight, (x + 1) * bm.cellWidth, (y + 1) * bm.cellHeight);
     }
 
     public void sixelStart(int width, int height) {

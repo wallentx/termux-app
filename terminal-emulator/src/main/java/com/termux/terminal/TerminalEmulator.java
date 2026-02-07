@@ -599,9 +599,6 @@ public final class TerminalEmulator {
                 if (mEscapeState == ESC_OSC)
                     doOsc(b);
                 else {
-                    if (mEscapeState == ESC_APC) {
-                        doApc(b);
-                    }
                     mSession.onBell();
                 }
                 break;
@@ -662,11 +659,7 @@ public final class TerminalEmulator {
                     ESC_P_escape = true;
                     return;
                 } else if (mEscapeState != ESC_OSC) {
-                    if (mEscapeState != ESC_APC) {
-                        startEscapeSequence();
-                    } else {
-                        doApc(b);
-                    }
+                    startEscapeSequence();
                 } else {
                     doOsc(b);
                 }
@@ -2096,6 +2089,8 @@ public final class TerminalEmulator {
     private void doApc(int b) {
         switch (b) {
             case 7: // Bell.
+                finishSequence();
+                mSession.onBell();
                 break;
             case 27: // Escape.
                 continueSequence(ESC_APC_ESC);
@@ -2335,7 +2330,6 @@ public final class TerminalEmulator {
                         }
                         if (k.equalsIgnoreCase("width")) {
                             double factor = cellW;
-                            int div = 1;
                             int e = v.length();
                             if (v.endsWith("px")) {
                                 factor = 1;
@@ -2351,7 +2345,6 @@ public final class TerminalEmulator {
                         }
                         if (k.equalsIgnoreCase("height")) {
                             double factor = cellH;
-                            int div = 1;
                             int e = v.length();
                             if (v.endsWith("px")) {
                                 factor = 1;
