@@ -49,7 +49,7 @@ public final class TerminalRow {
     final long[] mStyle;
     /** If this row might contain chars with width != 1, used for deactivating fast path */
     boolean mHasNonOneWidthOrSurrogateChars;
-    /** If this row has a bitmap. Used for performace only */
+    /** If this row has a bitmap. Used for performance only */
     public boolean mHasBitmap;
 
     /** Construct a blank row (containing only whitespace, ' ') with a specified style. */
