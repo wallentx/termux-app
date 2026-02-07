@@ -2137,7 +2137,7 @@ public final class TerminalEmulator {
                         // Ignore non-Base64 data.
                     } catch(OutOfMemoryError e) {
                         // Out of memory
-                        // Keep decoding, but fo not collect the data
+                        // Keep decoding, but do not collect the data
                         ESC_OSC_outofmem = true;
                     }
                     }
