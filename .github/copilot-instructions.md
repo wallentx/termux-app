@@ -6,10 +6,11 @@ This is an Android terminal emulator application with a Linux environment. The r
 
 ### Required Before Each Commit
 - Follow the [Conventional Commits](https://www.conventionalcommits.org) specification for all commit messages
+- **This project uses a custom variant** with capitalized types for automatic changelog generation
 - Commit types must be: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security`
-- First letter for `type` and `description` must be capital
+- First letter for `type` and `description` must be capital, description in present tense
 - Format: `<type>[optional scope]: <description>`
-- Example: `Fixed: Fix terminal crash on Android 12`, `Added(terminal): Add new color scheme`
+- Example: `Fixed: Terminal crash on Android 12`, `Added(terminal): Color scheme support`, `Changed!: Update minimum SDK to API 24`
 
 ### Code Formatting
 - Use spaces for indentation (4 spaces for Java/Gradle, 2 spaces for YAML)
