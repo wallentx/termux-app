@@ -27,12 +27,12 @@ import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.RealObject;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowView;
+import org.robolectric.shadows.ShadowLooper;
 
 import java.lang.reflect.Proxy;
 import java.time.Duration;
 
 import static org.junit.Assert.*;
-import static org.robolectric.Shadows.shadowOf;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 28, application = Application.class, shadows = SelectionToolbarTest.ToolbarViewShadow.class)
@@ -63,7 +63,7 @@ public class SelectionToolbarTest {
     @Test public void initialSelectionRefreshesMenuWithoutTouchingHandles() {
         select();
         assertTrue(toolbar.activeDuringCreation);
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
+        Shadow.<ShadowLooper>extract(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
         assertTrue(toolbar.mode.refreshes > 0);
         assertEquals(1, toolbar.mode.shows);
         assertTrue("A single selected cell needs nonzero width", toolbar.mode.rect.width() > 0);
@@ -73,26 +73,26 @@ public class SelectionToolbarTest {
     @Test public void dragHidesMenuUntilReleaseAndRepeatedReleasesCoalesce() {
         select();
         touch(MotionEvent.ACTION_MOVE);
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
+        Shadow.<ShadowLooper>extract(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
         assertEquals(0, toolbar.mode.shows);
         assertEquals(1, toolbar.mode.hides);
         touch(MotionEvent.ACTION_UP);
         touch(MotionEvent.ACTION_UP);
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
+        Shadow.<ShadowLooper>extract(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
         assertEquals(1, toolbar.mode.shows);
     }
 
     @Test public void finishedActionModeIsNotReshownByPendingCallback() {
         select();
         toolbar.mode.finish();
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
+        Shadow.<ShadowLooper>extract(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
         assertEquals(0, toolbar.mode.shows);
     }
 
     @Test public void detachedViewDoesNotRunPendingMenuRefresh() {
         select();
         view.onDetachedFromWindow();
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
+        Shadow.<ShadowLooper>extract(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
         assertEquals(0, toolbar.mode.shows);
     }
 
