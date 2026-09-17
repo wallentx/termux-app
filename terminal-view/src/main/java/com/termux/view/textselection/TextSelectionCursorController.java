@@ -48,9 +48,10 @@ public class TextSelectionCursorController implements CursorController {
         mStartHandle.positionAtCursor(mSelX1, mSelY1, true);
         mEndHandle.positionAtCursor(mSelX2 + 1, mSelY2, true);
 
-        setActionModeCallBacks();
         mShowStartTime = System.currentTimeMillis();
         mIsSelectingText = true;
+        // ActionMode creation can synchronously query the current selection.
+        setActionModeCallBacks();
     }
 
     @Override
@@ -159,6 +160,7 @@ public class TextSelectionCursorController implements CursorController {
 
             @Override
             public void onDestroyActionMode(ActionMode mode) {
+                if (mActionMode == mode) mActionMode = null;
             }
 
         };
@@ -187,13 +189,13 @@ public class TextSelectionCursorController implements CursorController {
 
             @Override
             public void onDestroyActionMode(ActionMode mode) {
-                // Ignore.
+                callback.onDestroyActionMode(mode);
             }
 
             @Override
             public void onGetContentRect(ActionMode mode, View view, Rect outRect) {
                 int x1 = Math.round(mSelX1 * terminalView.mRenderer.getFontWidth());
-                int x2 = Math.round(mSelX2 * terminalView.mRenderer.getFontWidth());
+                int x2 = Math.round((mSelX2 + 1) * terminalView.mRenderer.getFontWidth());
                 int y1 = Math.round((mSelY1 - 1 - terminalView.getTopRow()) * terminalView.mRenderer.getFontLineSpacing());
                 int y2 = Math.round((mSelY2 + 1 - terminalView.getTopRow()) * terminalView.mRenderer.getFontLineSpacing());
 
@@ -203,7 +205,8 @@ public class TextSelectionCursorController implements CursorController {
                     x2 = tmp;
                 }
 
-                int terminalBottom = terminalView.getBottom();
+                // Callback2 requires coordinates local to the originating view.
+                int terminalBottom = terminalView.getHeight();
                 int top = y1 + mHandleHeight;
                 int bottom = y2 + mHandleHeight;
                 if (top > terminalBottom) top = terminalBottom;

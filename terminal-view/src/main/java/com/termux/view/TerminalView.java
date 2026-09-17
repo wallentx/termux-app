@@ -1435,10 +1435,14 @@ public final class TerminalView extends View {
         mClient.copyModeChanged(isSelectingText());
 
         invalidate();
+        // Handles and ActionMode are created during a long press. Refresh once their windows
+        // have settled instead of relying on a later selection-handle touch to show the menu.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) showFloatingToolbar();
     }
 
     public void stopTextSelectionMode() {
         if (hideTextSelectionCursors()) {
+            removeCallbacks(mShowFloatingToolbar);
             mClient.copyModeChanged(isSelectingText());
             invalidate();
         }
@@ -1461,6 +1465,7 @@ public final class TerminalView extends View {
 
     @Override
     protected void onDetachedFromWindow() {
+        removeCallbacks(mShowFloatingToolbar);
         super.onDetachedFromWindow();
 
         if (mTextSelectionCursorController != null) {
@@ -1482,8 +1487,11 @@ public final class TerminalView extends View {
         @RequiresApi(api = Build.VERSION_CODES.M)
         @Override
         public void run() {
-            if (getTextSelectionActionMode() != null) {
-                getTextSelectionActionMode().hide(0);  // hide off.
+            ActionMode mode = getTextSelectionActionMode();
+            if (isAttachedToWindow() && isSelectingText() && mode != null) {
+                // hide(0) only clears a hide request; it does not refresh stale content bounds.
+                mode.invalidateContentRect();
+                mode.hide(0);
             }
         }
     };
@@ -1491,6 +1499,7 @@ public final class TerminalView extends View {
     @RequiresApi(api = Build.VERSION_CODES.M)
     private void showFloatingToolbar() {
         if (getTextSelectionActionMode() != null) {
+            removeCallbacks(mShowFloatingToolbar);
             int delay = ViewConfiguration.getDoubleTapTimeout();
             postDelayed(mShowFloatingToolbar, delay);
         }

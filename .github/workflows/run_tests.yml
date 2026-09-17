@@ -35,4 +35,5 @@ jobs:
         run: sdkmanager 'platforms;android-37.2' 'build-tools;37.0.0' 'ndk;29.0.14206865'
       - name: Execute tests
         run: |
+          python3 -B -m unittest discover -s scripts/pixel-validate -p 'test_*.py'
           ./gradlew test

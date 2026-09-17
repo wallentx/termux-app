@@ -1,7 +1,10 @@
 # Pixel 11 feature integration plan
 
-Status: first diagnostic slice prepared; CI build and device validation pending.
-Verified baseline on 2026-09-16. See [probe instructions](PIXEL11_PROBE.md).
+Status: API 37 default APK built successfully in CI and installed by the user;
+basic use works. Broader workload checks remain open. Run the
+[device validation script](PIXEL11_VALIDATION.md) to collect results.
+Device baseline verified on 2026-09-16; install confirmed on 2026-09-17.
+See also [probe instructions](PIXEL11_PROBE.md).
 
 ## Device and scope
 
@@ -70,7 +73,9 @@ Android bridge base. Both new forks were created when implementation began.
 
 ## 1. Foundation: SDK, native execution, storage, installation
 
-API 37 is now the build default. This stage still gates calling it ready for daily use.
+API 37 is now the build default, and the user has confirmed the installed app works.
+The remaining work below covers specific workloads, storage access, signing and
+updates; it does not mean the app is unusable until every item is complete.
 
 - [ ] **F1 - Modern native execution spike.** Evaluate current upstream
   `termux-exec-package` system-linker execution, including bootstrap and the first
