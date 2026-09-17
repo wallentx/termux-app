@@ -17,6 +17,12 @@ on:
       - dev
 jobs:
   build:
+    # Same-repository branches below already build on push (including the dev -> master sync PR).
+    # Keep PR validation for fork branches and branches without a push trigger.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository ||
+      !(contains(fromJSON('["master","dev"]'), github.head_ref) || startsWith(github.head_ref, 'github-releases/'))
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

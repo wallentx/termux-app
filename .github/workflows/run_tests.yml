@@ -12,6 +12,11 @@ on:
       - android-10
 jobs:
   testing:
+    # Same-repository long-lived branches are tested by the push event.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository ||
+      !contains(fromJSON('["master","dev","android-10"]'), github.head_ref)
     runs-on: ubuntu-latest
     steps:
       - name: Clone repository
