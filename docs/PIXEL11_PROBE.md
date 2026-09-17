@@ -5,9 +5,9 @@ No local Android or native builds have been run.
 
 ## What this first slice establishes
 
-The opt-in `-PpixelProbe=true` build compiles against SDK 37.2, targets API 37,
+The opt-in `-PpixelProbe=true` build uses the Pacman bootstrap, compiles against SDK 37.2, targets API 37,
 requires API 37, packages ARM64 only, and adds a diagnostic Activity to the real
-`com.termux` APK. The regular build keeps its existing SDK settings. The probe
+`com.termux` APK. The regular build also targets 37 and compiles against 37.2, without the probes. The probe
 uses the same JNI PTY launcher as `TerminalSession`, rather than executing its
 checks under the more privileged ADB shell UID.
 
@@ -28,7 +28,9 @@ Native output bytes outside printable ASCII are escaped individually in JSON.
 This does not execute optional SIMD instructions, benchmark kernels, install or
 update packages, test raw execve/static binaries, install a bootstrap, or prove
 that normal terminal sessions work at target 37. It explicitly reports a missing
-bootstrap. No default shell-launch behavior is changed. One existing JNI error
+bootstrap. The normal launcher now uses the system linker for app-private dynamic
+programs; these diagnostic cases intentionally also retain direct execution as a
+negative control. One existing JNI error
 is fixed: release the cwd UTF string with its matching Java string handle.
 
 ## Identity and repository decisions

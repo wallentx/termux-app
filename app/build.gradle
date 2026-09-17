@@ -2,8 +2,9 @@ plugins {
     id "com.android.application"
 }
 
-// Explicit diagnostic mode: never changes the default APK or production SDK baseline.
+// Explicit diagnostic mode: adds probes and restricts installation to Android 17.
 def pixelProbe = providers.gradleProperty("pixelProbe").orNull == "true"
+def arm64Only = rootProject.ext.termuxArm64Only
 if (pixelProbe && gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }) {
     throw new GradleException("Pixel probes are debug-only; use :app:assembleDebug")
 }
@@ -14,8 +15,8 @@ ext {
     // crash at startup.
     // Bootstrap of a different variant must not be manually installed by the user after app installation
     // by replacing $PREFIX since app code is dependant on the variant used to build the APK.
-    // Currently supported values are: [ "apt-android-7" "apt-android-5" ]
-    packageVariant = System.getenv("TERMUX_PACKAGE_VARIANT") ?: "apt-android-7" // Default: "apt-android-7"
+    // Supported: pacman-android-7 (default), apt-android-7, apt-android-5.
+    packageVariant = System.getenv("TERMUX_PACKAGE_VARIANT") ?: "pacman-android-7"
 }
 
 android {
@@ -28,6 +29,7 @@ android {
         buildToolsVersion '37.0.0'
     } else {
         compileSdkVersion project.properties.compileSdkVersion.toInteger()
+        compileSdkMinor = project.properties.compileSdkMinorVersion.toInteger()
     }
     ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
     def appVersionName = System.getenv("TERMUX_APP_VERSION_NAME") ?: ""
@@ -80,21 +82,21 @@ android {
             }
         }
 
-        if (pixelProbe) {
+        if (arm64Only) {
             ndk { abiFilters 'arm64-v8a' }
         }
 
         splits {
             abi {
-                enable (!pixelProbe && ((gradle.startParameter.taskNames.any { it.contains("Debug") } && splitAPKsForDebugBuilds == "1") ||
+                enable (!arm64Only && ((gradle.startParameter.taskNames.any { it.contains("Debug") } && splitAPKsForDebugBuilds == "1") ||
                     (gradle.startParameter.taskNames.any { it.contains("Release") } && splitAPKsForReleaseBuilds == "1")))
                 reset ()
-                if (pixelProbe) {
+                if (arm64Only) {
                     include 'arm64-v8a'
                 } else {
                     include 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a'
                 }
-                universalApk !pixelProbe
+                universalApk !arm64Only
             }
         }
     }
@@ -157,10 +159,10 @@ android {
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
             if (variant.buildType.name == "debug") {
-                def abi = output.getFilter(com.android.build.OutputFile.ABI) ?: (pixelProbe ? 'arm64-v8a' : null)
+                def abi = output.getFilter(com.android.build.OutputFile.ABI) ?: (arm64Only ? 'arm64-v8a' : null)
                 outputFileName = new File("termux-app_" + (apkVersionTag ? apkVersionTag : project.ext.packageVariant + "-" + "debug") + "_" + (abi ? abi : "universal") + ".apk")
             } else if (variant.buildType.name == "release") {
-                def abi = output.getFilter(com.android.build.OutputFile.ABI)
+                def abi = output.getFilter(com.android.build.OutputFile.ABI) ?: (arm64Only ? 'arm64-v8a' : null)
                 outputFileName = new File("termux-app_" + (apkVersionTag ? apkVersionTag : project.ext.packageVariant + "-" + "release") + "_" + (abi ? abi : "universal") + ".apk")
             }
         }
@@ -197,7 +199,9 @@ def validateVersionName(String versionName) {
         throw new GradleException("The versionName '"  + versionName + "' is not a valid version as per semantic version '2.0.0' spec in the format 'major.minor.patch(-prerelease)(+buildmetadata)'. https://semver.org/spec/v2.0.0.html.")
 }
 
-def downloadBootstrap(String arch, String expectedChecksum, String version) {
+def downloadBootstrap(String arch, String expectedChecksum, String version,
+                      String repository = "termux/termux-packages") {
+    if (rootProject.ext.termuxArm64Only && arch != "aarch64") return
     def digest = java.security.MessageDigest.getInstance("SHA-256")
 
     def localUrl = "src/main/cpp/bootstrap-" + arch + ".zip"
@@ -220,7 +224,7 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
         }
     }
 
-    def remoteUrl = "https://github.com/termux/termux-packages/releases/download/bootstrap-" + version + "/bootstrap-" + arch + ".zip"
+    def remoteUrl = "https://github.com/" + repository + "/releases/download/bootstrap-" + version + "/bootstrap-" + arch + ".zip"
     logger.quiet("Downloading " + remoteUrl + " ...")
 
     file.parentFile.mkdirs()
@@ -251,7 +255,15 @@ clean {
 task downloadBootstraps() {
     doLast {
         def packageVariant = project.ext.packageVariant
-        if (packageVariant == "apt-android-7") {
+        if (packageVariant == "pacman-android-7") {
+            // Pin release and SHA-256 values; do not resolve a moving 'latest' at build time.
+            def version = "2026.09.13-r1%2Bpacman.android-7"
+            def repository = "termux-pacman/termux-packages"
+            downloadBootstrap("aarch64", "e8c793fce673b0468e29168ad7cec9aebb586401d92b1c9d9c86547a793dab6a", version, repository)
+            downloadBootstrap("arm", "14584a22a90083fa7c5d9712a27d055de0ef8b91ab3d62f26e15ac16cf7daadd", version, repository)
+            downloadBootstrap("i686", "a8cd7f7c6f1c81d6fe36060e796eb469df004dad6404aba1ebbc31847ea9eada", version, repository)
+            downloadBootstrap("x86_64", "21cd53ce3176e9615ea728ee3610ef46a123cdff105c4132e1ca07211fd85e0c", version, repository)
+        } else if (packageVariant == "apt-android-7") {
             def version = "2026.02.12-r1" + "%2B" + "apt.android-7"
             downloadBootstrap("aarch64", "ea2aeba8819e517db711f8c32369e89e7c52cee73e07930ff91185e1ab93f4f3", version)
             downloadBootstrap("arm", "a38f4d3b2f735f83be2bf54eff463e86dc32a3e2f9f861c1557c4378d249c018", version)

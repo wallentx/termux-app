@@ -1,5 +1,11 @@
 name: Build
 on:
+  workflow_dispatch:
+    inputs:
+      all_apks:
+        description: 'Build all architectures and all bootstrap variants'
+        type: boolean
+        default: false
   push:
     branches:
       - master
@@ -15,7 +21,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package_variant: [apt-android-7, apt-android-5]
+        package_variant: ${{ fromJSON((inputs.all_apks || vars.TERMUX_BUILD_ALL_APKS == 'true') && '["pacman-android-7","apt-android-7","apt-android-5"]' || '["pacman-android-7"]') }}
+    env:
+      BUILD_ALL_APKS: ${{ inputs.all_apks || vars.TERMUX_BUILD_ALL_APKS == 'true' }}
     steps:
       - name: Clone repository
         uses: actions/checkout@v7
@@ -24,6 +32,13 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - name: Install SDK and NDK
+        run: sdkmanager 'platforms;android-37.2' 'build-tools;37.0.0' 'ndk;29.0.14206865'
       - name: Build APKs
         shell: bash {0}
         env:
@@ -50,37 +65,57 @@ jobs:
           APK_BASENAME_PREFIX="termux-app_$APK_VERSION_TAG"
 
           # Used by attachment steps later
-          echo "APK_DIR_PATH=$APK_DIR_PATH" >> $GITHUB_ENV
-          echo "APK_VERSION_TAG=$APK_VERSION_TAG" >> $GITHUB_ENV
-          echo "APK_BASENAME_PREFIX=$APK_BASENAME_PREFIX" >> $GITHUB_ENV
+          {
+              echo "APK_DIR_PATH=$APK_DIR_PATH"
+              echo "APK_VERSION_TAG=$APK_VERSION_TAG"
+              echo "APK_BASENAME_PREFIX=$APK_BASENAME_PREFIX"
+          } >> "$GITHUB_ENV"
 
           echo "Building APKs for 'APK_VERSION_TAG' build"
           export TERMUX_APP_VERSION_NAME="${RELEASE_VERSION_NAME/v/}" # Used by app/build.gradle
           export TERMUX_APK_VERSION_TAG="$APK_VERSION_TAG" # Used by app/build.gradle
           export TERMUX_PACKAGE_VARIANT="${{ env.PACKAGE_VARIANT }}" # Used by app/build.gradle
-          if ! ./gradlew assembleDebug; then
+          build_profile=pixel11
+          abis=(arm64-v8a)
+          if [ "$BUILD_ALL_APKS" = "true" ]; then
+              build_profile=all
+              abis=(universal arm64-v8a armeabi-v7a x86_64 x86)
+          fi
+          if ! ./gradlew :app:assembleDebug -PtermuxBuildProfile="$build_profile"; then
             exit_on_error "Build failed for '$APK_VERSION_TAG' build."
           fi
 
           echo "Validating APKs"
-          for abi in universal arm64-v8a armeabi-v7a x86_64 x86; do
+          apk_files=()
+          for abi in "${abis[@]}"; do
             if ! test -f "$APK_DIR_PATH/${APK_BASENAME_PREFIX}_$abi.apk"; then
               files_found="$(ls "$APK_DIR_PATH")"
               exit_on_error "Failed to find built APK at '$APK_DIR_PATH/${APK_BASENAME_PREFIX}_$abi.apk'. Files found: "$'\n'"$files_found"
             fi
+            apk_files+=("${APK_BASENAME_PREFIX}_$abi.apk")
           done
 
-          echo "Generating sha25sums file"
-          if ! (cd "$APK_DIR_PATH"; sha256sum \
-            "${APK_BASENAME_PREFIX}_universal.apk" \
-            "${APK_BASENAME_PREFIX}_arm64-v8a.apk" \
-            "${APK_BASENAME_PREFIX}_armeabi-v7a.apk" \
-            "${APK_BASENAME_PREFIX}_x86_64.apk" \
-            "${APK_BASENAME_PREFIX}_x86.apk" \
+          echo "Generating sha256sums file"
+          if ! (cd "$APK_DIR_PATH"; sha256sum "${apk_files[@]}" \
             > "${APK_BASENAME_PREFIX}_sha256sums"); then
             exit_on_error "Generate sha25sums failed for '$APK_VERSION_TAG' release."
           fi
+      - name: Verify default Pixel APK
+        if: env.BUILD_ALL_APKS != 'true'
+        shell: bash
+        run: |
+          apk="$APK_DIR_PATH/${APK_BASENAME_PREFIX}_arm64-v8a.apk"
+          apkanalyzer manifest target-sdk "$apk" | grep -x 37
+          python3 - "$apk" <<'PY'
+          import pathlib, sys, zipfile
+          path = pathlib.Path(sys.argv[1])
+          assert len(list(path.parent.glob('*.apk'))) == 1, 'Expected one APK'
+          with zipfile.ZipFile(path) as apk:
+              abis = {n.split('/')[1] for n in apk.namelist() if n.startswith('lib/') and n.endswith('.so')}
+              assert abis == {'arm64-v8a'}, abis
+          PY
       - name: Attach universal APK file
+        if: env.BUILD_ALL_APKS == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APK_BASENAME_PREFIX }}_universal
@@ -95,6 +130,7 @@ jobs:
             ${{ env.APK_DIR_PATH }}/${{ env.APK_BASENAME_PREFIX }}_arm64-v8a.apk
             ${{ env.APK_DIR_PATH }}/output-metadata.json
       - name: Attach armeabi-v7a APK file
+        if: env.BUILD_ALL_APKS == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APK_BASENAME_PREFIX }}_armeabi-v7a
@@ -102,6 +138,7 @@ jobs:
             ${{ env.APK_DIR_PATH }}/${{ env.APK_BASENAME_PREFIX }}_armeabi-v7a.apk
             ${{ env.APK_DIR_PATH }}/output-metadata.json
       - name: Attach x86_64 APK file
+        if: env.BUILD_ALL_APKS == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APK_BASENAME_PREFIX }}_x86_64
@@ -109,6 +146,7 @@ jobs:
             ${{ env.APK_DIR_PATH }}/${{ env.APK_BASENAME_PREFIX }}_x86_64.apk
             ${{ env.APK_DIR_PATH }}/output-metadata.json
       - name: Attach x86 APK file
+        if: env.BUILD_ALL_APKS == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APK_BASENAME_PREFIX }}_x86

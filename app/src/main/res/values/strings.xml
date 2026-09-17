@@ -31,6 +31,7 @@
     <string name="bootstrap_error_body">&TERMUX_APP_NAME; was unable to install the bootstrap packages.</string>
     <string name="bootstrap_error_abort">Abort</string>
     <string name="bootstrap_error_try_again">Try again</string>
+    <string name="bootstrap_error_pacman_apt_prefix">This build uses Pacman, but your installed environment uses APT. Install an APT build to keep using that environment, or back up your data before setting up a fresh Pacman environment. Updating the APK does not convert existing packages.</string>
     <string name="bootstrap_error_not_primary_user_message">&TERMUX_APP_NAME; can only be run as the primary user.
         \nBootstrap binaries compiled for &TERMUX_APP_NAME; have hardcoded $PREFIX path and cannot be installed
         under any path other than:\n%1$s.</string>

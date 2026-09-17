@@ -1,25 +1,6 @@
 name: Pixel SDK and SIMD probe
 on:
   workflow_dispatch:
-  push:
-    branches: [dev, 'wallentx/pixel/**']
-    paths:
-      - '.github/workflows/pixel_probe.yml'
-      - 'app/src/pixelProbe/**'
-      - 'app/build.gradle'
-      - 'app/src/main/cpp/Android.mk'
-      - 'terminal-emulator/**'
-      - 'termux-shared/build.gradle'
-      - 'scripts/pixel-probe/**'
-  pull_request:
-    paths:
-      - '.github/workflows/pixel_probe.yml'
-      - 'app/src/pixelProbe/**'
-      - 'app/build.gradle'
-      - 'app/src/main/cpp/Android.mk'
-      - 'terminal-emulator/**'
-      - 'termux-shared/build.gradle'
-      - 'scripts/pixel-probe/**'
 permissions:
   contents: read
 jobs:
@@ -37,12 +18,12 @@ jobs:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - name: Install SDK and NDK
-        run: sdkmanager 'platforms;android-37.2' 'platforms;android-36' 'build-tools;37.0.0' 'ndk;29.0.14206865'
+        run: sdkmanager 'platforms;android-37.2' 'build-tools;37.0.0' 'ndk;29.0.14206865'
       - name: Check report validator
         run: python3 -m unittest discover -s scripts/pixel-probe -p 'test_*.py'
       - name: Build ARM64 target-37 diagnostic APK
         env:
-          TERMUX_PACKAGE_VARIANT: apt-android-7
+          TERMUX_PACKAGE_VARIANT: pacman-android-7
           TERMUX_APK_VERSION_TAG: pixel-probe-debug
         run: ./gradlew --no-daemon :app:assembleDebug -PpixelProbe=true
       - name: Verify diagnostic artifact

@@ -4,6 +4,7 @@ apply plugin: 'maven-publish'
 android {
     namespace "com.termux.view"
     compileSdkVersion project.properties.compileSdkVersion.toInteger()
+    compileSdkMinor = project.properties.compileSdkMinorVersion.toInteger()
 
     dependencies {
         implementation "androidx.annotation:annotation:1.9.0"

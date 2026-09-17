@@ -9,8 +9,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.IBinder;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
@@ -62,10 +64,12 @@ import com.termux.view.TerminalViewClient;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.viewpager.widget.ViewPager;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 
 /**
  * A terminal emulator activity.
@@ -193,6 +197,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
 
     private static final String LOG_TAG = "TermuxActivity";
+    private static final int REQUEST_TERMINAL_PERMISSIONS = 2001;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -277,6 +282,26 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // Send the {@link TermuxConstants#BROADCAST_TERMUX_OPENED} broadcast to notify apps that Termux
         // app has been opened.
         TermuxUtils.sendTermuxOpenedBroadcast(this);
+        requestTerminalPermissions();
+    }
+
+    private void requestTerminalPermissions() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        android.content.SharedPreferences prompts = getSharedPreferences("terminal-permission-prompts", MODE_PRIVATE);
+        ArrayList<String> missing = new ArrayList<>();
+        String[] permissions = Build.VERSION.SDK_INT >= 37
+            ? new String[]{"android.permission.POST_NOTIFICATIONS", "android.permission.ACCESS_LOCAL_NETWORK"}
+            : new String[]{"android.permission.POST_NOTIFICATIONS"};
+        for (String permission : permissions) {
+            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED && !prompts.getBoolean(permission, false))
+                missing.add(permission);
+        }
+        if (missing.isEmpty()) return;
+        // Ask once per permission. Denial keeps the terminal usable; grants can be changed in Settings.
+        android.content.SharedPreferences.Editor editor = prompts.edit();
+        for (String permission : missing) editor.putBoolean(permission, true);
+        editor.apply();
+        requestPermissions(missing.toArray(new String[0]), REQUEST_TERMINAL_PERMISSIONS);
     }
 
     @Override
@@ -921,7 +946,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         intentFilter.addAction(TERMUX_ACTIVITY.ACTION_RELOAD_STYLE);
         intentFilter.addAction(TERMUX_ACTIVITY.ACTION_REQUEST_PERMISSIONS);
 
-        registerReceiver(mTermuxActivityBroadcastReceiver, intentFilter);
+        ContextCompat.registerReceiver(this, mTermuxActivityBroadcastReceiver, intentFilter,
+            ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
     private void unregisterTermuxActivityBroadcastReceiver() {

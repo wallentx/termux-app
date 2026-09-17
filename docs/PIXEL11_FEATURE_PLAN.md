@@ -19,17 +19,22 @@ root, custom kernels, and support for older Android releases are not requirement
 Build APKs and native artifacts in CI or another build host. Run installed-artifact
 checks on the Pixel. Do not run builds in this Termux workspace.
 
-The intended SDK baseline is minSdk 37, targetSdk 37, and compile SDK 37.2 after
-verifying Gradle integration on the build host. The SDK package is available.
-Minor-release APIs require the appropriate full-version checks. The current app
-remains at minSdk 21, targetSdk 28, compileSdk 36 by default until the migration
-passes its acceptance checks. New Android APIs do not universally require raising
-targetSdk; audit each feature's actual requirements.
+The default build profile now selects one ARM64 APK with a pinned Pacman bootstrap.
+APT and other architectures remain opt-in; see [build profiles](BUILD_PROFILES.md).
+The Pacman feed initially comes from Termux-Pacman. Fresh-install package setup
+still needs device validation; existing APT prefixes are not converted by updating
+the APK. Bootstrap package compatibility (Android 7+) is distinct from targetSdk.
+
+The normal build now targets API 37 and compiles against SDK 37.2, as requested.
+The minimum SDK remains 21 to preserve older build options; the optional diagnostic
+requires 37. Native dynamic-program startup now uses the system linker and the
+modern termux-exec preload. Service declarations, notification intents, receiver
+flags and notification/LAN permission requests have been updated. This establishes
+the migration code, not proof that all terminal workloads pass on the Pixel.
 
 The OS/build mapping is corroborated by the [QPR2 release notes](https://developer.android.com/about/versions/17/qpr2/release-notes).
-The SDK 37.2 value above was read directly from the Pixel; build-host SDK 37.2
-availability was subsequently verified in Google's SDK package catalog. The
-opt-in diagnostic build now selects 37.2; successful compilation remains unverified.
+SDK 37.2 was read from the Pixel and its build-host package availability verified
+in Google's SDK catalog. CI compilation and device acceptance remain separate gates.
 
 ## Component ownership
 
@@ -65,7 +70,7 @@ Android bridge base. Both new forks were created when implementation began.
 
 ## 1. Foundation: SDK, native execution, storage, installation
 
-This stage blocks committing to targetSdk 37 for daily use.
+API 37 is now the build default. This stage still gates calling it ready for daily use.
 
 - [ ] **F1 - Modern native execution spike.** Evaluate current upstream
   `termux-exec-package` system-linker execution, including bootstrap and the first
@@ -101,7 +106,7 @@ The documented linker workaround has limits: static executables, direct execve
 syscalls, preload propagation and `/proc/self/exe` behavior need explicit attention.
 If a critical workload fails, record the failure and decide between a package fix,
 a VM backend for that workload, or a temporary legacy native runner. Target 37 is
-the goal, not a verified result.
+configured; full workload compatibility remains unverified.
 
 Sources: [Android executable restrictions](https://developer.android.com/about/versions/10/behavior-changes-10#execute-permission),
 [termux-exec technical documentation](https://github.com/termux/termux-exec-package/blob/master/site/pages/en/projects/docs/technical/index.md),
