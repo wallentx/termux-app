@@ -1491,6 +1491,10 @@ public final class TerminalView extends View {
             if (isAttachedToWindow() && isSelectingText() && mode != null) {
                 // hide(0) only clears a hide request; it does not refresh stale content bounds.
                 mode.invalidateContentRect();
+                // Android 17's remote toolbar can report SHOWN before its window appears,
+                // then discard an identical show request. Reset that state so hide(0)
+                // actually sends an update, just as moving a selection handle would.
+                if (Build.VERSION.SDK_INT >= 37) mode.hide(ActionMode.DEFAULT_HIDE_DURATION);
                 mode.hide(0);
             }
         }

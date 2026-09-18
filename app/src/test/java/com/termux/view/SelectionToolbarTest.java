@@ -5,6 +5,7 @@ import android.app.Application;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.os.Looper;
+import android.os.Build;
 import android.view.ActionMode;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -28,6 +29,7 @@ import org.robolectric.annotation.RealObject;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowView;
 import org.robolectric.shadows.ShadowLooper;
+import org.robolectric.util.ReflectionHelpers;
 
 import java.lang.reflect.Proxy;
 import java.time.Duration;
@@ -89,6 +91,22 @@ public class SelectionToolbarTest {
         assertEquals(0, toolbar.mode.shows);
     }
 
+    @Test public void android17ResetsStaleShownStateBeforeShowingInitialMenu() {
+        // Exercise our API gate on the supported test runtime; real framework behavior
+        // is checked separately on the Android 17 device.
+        int sdk = Build.VERSION.SDK_INT;
+        try {
+            ReflectionHelpers.setStaticField(Build.VERSION.class, "SDK_INT", 37);
+            select();
+            Shadow.<ShadowLooper>extract(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
+            assertEquals(1, toolbar.mode.hides);
+            assertEquals(1, toolbar.mode.shows);
+            assertTrue(toolbar.mode.hiddenBeforeShow);
+        } finally {
+            ReflectionHelpers.setStaticField(Build.VERSION.class, "SDK_INT", sdk);
+        }
+    }
+
     @Test public void detachedViewDoesNotRunPendingMenuRefresh() {
         select();
         view.onDetachedFromWindow();
@@ -138,9 +156,13 @@ public class SelectionToolbarTest {
         final View view;
         final Rect rect = new Rect();
         int refreshes, shows, hides;
+        boolean hiddenBeforeShow;
         TestMode(Callback2 callback, View view) { this.callback = callback; this.view = view; }
         @Override public void invalidateContentRect() { refreshes++; callback.onGetContentRect(this, view, rect); }
-        @Override public void hide(long duration) { if (duration == 0) shows++; else hides++; }
+        @Override public void hide(long duration) {
+            if (duration == 0) { hiddenBeforeShow = hides > 0; shows++; }
+            else hides++;
+        }
         @Override public void finish() { callback.onDestroyActionMode(this); }
         @Override public void invalidate() {}
         @Override public void setTitle(CharSequence title) {}
