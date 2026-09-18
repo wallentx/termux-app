@@ -112,6 +112,7 @@ jobs:
         run: |
           apk="$APK_DIR_PATH/${APK_BASENAME_PREFIX}_arm64-v8a.apk"
           apkanalyzer manifest target-sdk "$apk" | grep -x 37
+          apkanalyzer manifest version-code "$apk" | grep -x 1000
           python3 - "$apk" <<'PY'
           import pathlib, sys, zipfile
           path = pathlib.Path(sys.argv[1])

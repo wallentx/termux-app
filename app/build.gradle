@@ -58,7 +58,8 @@ android {
     defaultConfig {
         minSdkVersion pixelProbe ? 37 : project.properties.minSdkVersion.toInteger()
         targetSdkVersion pixelProbe ? 37 : project.properties.targetSdkVersion.toInteger()
-        versionCode 118
+        // Avoid update offers for the differently signed Play build (141 on 2026-09-18).
+        versionCode 1000
         versionName "0.118.0"
 
         if (appVersionName) versionName = appVersionName

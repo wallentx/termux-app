@@ -1,5 +1,12 @@
 # APK build profiles
 
+The fork uses Android `versionCode` 1000, above the Play Store source's 141 as of
+2026-09-18. This suppresses update offers for that lower-version, differently
+signed build while retaining `com.termux` and its existing data/package paths.
+It is not a permanent Play Store exclusion: revisit the value if Play catches up.
+Future fork releases must keep or increase it; an older APK with a lower code is
+a downgrade. The displayed `versionName` still includes the Git SHA in CI.
+
 The default `pixel11` profile produces one ARM64 APK per requested build type,
 using the `pacman-android-7` bootstrap. It builds only ARM64 native libraries and
 downloads only the ARM64 bootstrap. The other architectures and the older
