@@ -358,5 +358,18 @@ not request privileges or execute privileged operations. See the
 
 This slice retains compatible debug signing, the shared UID and existing
 authenticated transport. It does not complete B1's AVF/ML inventory, B2's new
-protocol, a private-signing migration, or B4's privileged Shizuku adapter. API 37
-build/device validation and the older API operations must be assessed separately.
+protocol or a private-signing migration. API 37 build/device validation and the
+older API operations must be assessed separately.
+
+B4 now has a validated first operation: `termux-shizuku --thermal`, with explicit
+foreground authorization and a fixed thermal-service read running as shell UID
+2000. Pixel tests verified denied/granted states, service loss, recovery after
+Binder delivery, retained authorization and helper cleanup. API commit `237b480`
+also fixes the access screen's Android 17 system-bar overlap. No arbitrary shell
+endpoint is exposed; further privileged operations require individual scoping.
+
+The next measurement slice adds API/thermal snapshots to the validator and a
+CI-built scalar/NEON/SVE2 byte-difference benchmark. See
+[the validation guide](PIXEL11_VALIDATION.md#explicit-scalar--neon--sve2-benchmark)
+for correctness checks and measurement limits. This measures one explicit kernel,
+not optimized dispatch throughout the installed package collection.

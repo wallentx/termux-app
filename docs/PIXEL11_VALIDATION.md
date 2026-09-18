@@ -58,6 +58,21 @@ the private home directory if unset) and cleaned up on normal completion.
 
 Metadata includes the app version/target SDK exported by Termux, OS/model, Python,
 OpenSSL, process UID/SELinux context, page size, and readable battery sysfs values.
+Schema 3 also queries installed `termux-capabilities --json` and
+`termux-shizuku --thermal` commands. Missing tools, denied authorization and a
+disconnected Shizuku service remain explicit skips; a timeout, malformed response
+or failed command is a failure. The runner never requests authorization or starts
+Shizuku. An exit-zero API response is not enough to count a temperature reading as
+passing: its operation/status and sensor arrays must also be valid.
+
+Benchmarks collect snapshots before and after the run and, when a bridge is
+available, in one background sampler. The sampler waits five seconds between
+request pairs; request latency adds to that interval. Each API command has a
+25-second deadline. Shutdown waits for an in-flight pair to finish (up to 50
+seconds). `thermal_samples` retains timestamps and availability/error states;
+`thermal_summary` reports observed temperature ranges and maximum Android
+throttling status. Unknown readings remain missing, not zero. Sampling can miss
+brief peaks and adds background work, so compare runs with the same sampler setup.
 It does not dump all environment variables, credentials, serial numbers, or IMEI.
 Review command output and paths in the report before sharing it.
 
@@ -93,8 +108,53 @@ SVE/SME query failures retain their errno instead of implying lack of hardware.
 
 Compare reports using the same script hash, package versions, phone temperature,
 power/charging state, and workload. Keep the app visible and avoid other heavy
-work during comparison. A kernel-dispatch audit and sustained thermal benchmarks
-remain separate work.
+work during comparison. These Python measurements still do not identify the
+instruction paths used by installed libraries.
+
+### Explicit scalar / NEON / SVE2 benchmark
+
+The **Pixel SIMD benchmark** Actions workflow produces `pixel-simd-arm64`, a
+standalone native executable plus this runner, checksums, compiler version,
+source commit and disassembly. Build it in CI; no compiler is needed on the phone.
+Extract the artifact into a private Termux directory, then run:
+
+```sh
+sha256sum -c SHA256SUMS
+chmod 700 pixel-simd-bench
+python3 validate.py --simd-binary ./pixel-simd-bench
+```
+
+Defaults run five 0.5-second batches per supported kernel (7.5 seconds of timed
+work with all three available, plus correctness checks, tool startup and API
+requests). For a sustained comparison, use `--samples 7 --sample-seconds 2`
+(42 seconds of timed work). `--bench` optionally adds the existing Python/storage
+benchmarks. Do not run through `adb shell`, QEMU or PRoot for device performance.
+
+All three kernels compute the same exact sum of absolute differences between two
+fixed 8 MiB byte arrays. `bytes_per_iteration` counts **both arrays**, 16 MiB total.
+The expected sum is pinned at 705953792 and independently checked in Python.
+Every process tests fixed answers, unaligned inputs, lengths 0-513 and tails
+adjacent to unreadable guard pages before timing. Every timed iteration also
+checks its result. The scalar translation unit disables loop/SLP vectorization;
+NEON and SVE2 live in separate translation units, with LTO disabled. Runtime
+HWCAP/thread-state checks gate optional kernels; unsupported paths emit SKIP.
+The SVE2 kernel uses the actual thread vector length, without changing it.
+
+Kernel order rotates each round. Reported native timing excludes process startup,
+fixture allocation and self-tests. It includes kernel calls, result checks and
+timer checks. Each process warms up once. Thermal sampling runs concurrently;
+there are setup gaps between batches. These are bounded workload bouts, not a
+continuous thermal-soak test. No core affinity, governor or thermal thresholds
+are changed. Memory/cache bandwidth can limit results. Speedups apply only to
+this byte-difference workload, not OpenSSL, Python, AI packages or the whole app.
+SME/SME2 availability is still not an SME performance measurement.
+
+CI checks Linux ARM64 kernels under QEMU at 16/32/64-byte vector lengths and with
+SVE disabled, and inspects the shipped Android binary for scalar, NEON and SVE2
+instruction paths. QEMU results are correctness evidence only; Android/Bionic
+execution and performance must be checked on the Pixel.
+
+Instruction reference: [Arm C Language Extensions](https://arm-software.github.io/acle/main/acle.html).
 
 ## Sixel rendering check
 
@@ -136,5 +196,5 @@ confirmation of the reported Android 17 symptom requires this device check.
 
 Remaining manual checks are included in every JSON report: session persistence,
 notification actions, shared storage, LAN SSH, package installation/update,
-and normal agent workloads. AVF, the planned capability CLI, and other unimplemented
+and normal agent workloads. AVF and other unimplemented
 features are not counted as passing.

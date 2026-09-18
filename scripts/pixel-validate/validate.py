@@ -18,6 +18,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import zlib
 
@@ -36,7 +37,7 @@ def read_text(path):
         return None
 
 
-def run(command, cwd=None, timeout=10):
+def run(command, cwd=None, timeout=10, output_limit=4096):
     """Bound execution time/output; terminate the process group on timeout."""
     started = time.perf_counter()
     with tempfile.TemporaryFile() as output:
@@ -56,7 +57,7 @@ def run(command, cwd=None, timeout=10):
             child.wait()
             status, code = "FAIL", None
         output.seek(0)
-        detail = output.read(4096).decode("utf-8", "replace").strip()
+        detail = output.read(output_limit).decode("utf-8", "replace").strip()
         if code is None:
             detail = "Timed out after %ss; process group killed. " % timeout + detail
     return {"status": status, "exit_code": code, "detail": detail,
@@ -104,6 +105,158 @@ def cpu_capabilities():
 def power_snapshot():
     base = Path("/sys/class/power_supply/battery")
     return {name: read_text(base / name) for name in ("capacity", "temp", "status")}
+
+
+def reject_json_constant(value):
+    raise ValueError("Non-finite JSON number: " + value)
+
+
+def json_command(command, timeout=25):
+    """CLI exit zero is transport success, not proof that an API operation passed."""
+    executable = shutil.which(str(command[0]))
+    if not executable:
+        return {"status": "SKIP", "detail": str(command[0]) + " is not on PATH"}
+    result = run([executable, *command[1:]], timeout=timeout, output_limit=262144)
+    if result["status"] != "PASS":
+        return result
+    try:
+        payload = json.loads(result["detail"], parse_constant=reject_json_constant)
+        if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+            raise ValueError("Expected a schema_version 1 JSON object")
+        return {"status": "PASS", "data": payload, "seconds": result["seconds"]}
+    except (ValueError, TypeError) as error:
+        return {"status": "FAIL", "detail": "Invalid API/benchmark response: " + str(error)}
+
+
+def bridge_snapshot():
+    """Never prompts or starts Shizuku; unavailable/denied readings remain explicit."""
+    capabilities = json_command(["termux-capabilities", "--json"])
+    thermal = json_command(["termux-shizuku", "--thermal"])
+    if capabilities["status"] == "PASS":
+        data = capabilities["data"]
+        if not all(isinstance(data.get(key), dict) for key in ("device", "cpu", "battery", "thermal", "shizuku")):
+            capabilities.update(status="FAIL", detail="Capability response is missing required sections")
+    if thermal["status"] == "PASS":
+        data = thermal["data"]
+        status = data.get("status")
+        if data.get("operation") != "thermal":
+            thermal.update(status="FAIL", detail="Response is not a thermal operation")
+        elif status == "ok":
+            if not isinstance(data.get("temperatures"), list) or not isinstance(data.get("other_readings"), list):
+                thermal.update(status="FAIL", detail="Thermal response is missing sensor arrays")
+        elif status in ("denied", "unavailable", "unsupported", "busy", "partial"):
+            thermal.update(status="SKIP", detail="Thermal reading: " + status)
+        else:
+            thermal.update(status="FAIL", detail="Thermal reading: " + str(status))
+    return {"timestamp_unix_ms": round(time.time() * 1000),
+            "capabilities": capabilities, "thermal": thermal}
+
+
+def bridge_checks(snapshot):
+    return [dict(name=name, **snapshot[key]) for key, name in
+            (("capabilities", "Android API capability bridge"), ("thermal", "Shizuku thermal snapshot"))]
+
+
+def thermal_summary(snapshots):
+    temperatures, throttling = {}, []
+    for snapshot in snapshots:
+        thermal = snapshot["thermal"]
+        if thermal["status"] == "PASS":
+            for sensor in thermal["data"].get("temperatures", []):
+                if not isinstance(sensor, dict):
+                    continue
+                value = sensor.get("celsius")
+                if type(value) in (int, float) and math.isfinite(value):
+                    key = (str(sensor.get("name")), str(sensor.get("type")))
+                    temperatures.setdefault(key, []).append(value)
+        state = snapshot["capabilities"].get("data", {}).get("thermal", {}).get("throttling", {})
+        if not isinstance(state, dict):
+            continue
+        value = state.get("value")
+        if state.get("status") == "ok" and type(value) is int and 0 <= value <= 6:
+            throttling.append(value)
+    return {"snapshot_count": len(snapshots),
+            "detailed_snapshot_statuses": {status: sum(s["thermal"]["status"] == status for s in snapshots)
+                                           for status in ("PASS", "FAIL", "SKIP")},
+            "temperatures": [{"name": name, "type": kind, "min_celsius": min(values),
+                              "max_celsius": max(values), "samples": len(values)}
+                             for (name, kind), values in sorted(temperatures.items())],
+            "max_android_throttling_status": max(throttling) if throttling else None,
+            "note": "Sampled observations only; brief temperature/throttling peaks can be missed."}
+
+
+class ThermalSampler:
+    """One bounded API request pair at a time; no overlapping thermal readers."""
+    def __init__(self, enabled, interval=5):
+        self.samples = []
+        self.enabled = enabled
+        self.interval = interval
+        self.stop = threading.Event()
+        self.worker = None
+
+    def __enter__(self):
+        if self.enabled:
+            self.worker = threading.Thread(target=self.collect, daemon=True)
+            self.worker.start()
+        return self
+
+    def collect(self):
+        while not self.stop.wait(self.interval):
+            self.samples.append(bridge_snapshot())
+
+    def __exit__(self, *unused):
+        self.stop.set()
+        if self.worker:
+            self.worker.join()  # Each of the two API calls has a 25-second deadline.
+
+
+def simd_benchmarks(binary, samples, sample_seconds):
+    """Rotate kernel order each round; native timings exclude launch/API sampling."""
+    binary = str(binary.resolve())
+    results = []
+    for variant in ("scalar", "neon", "sve2"):
+        results.append({"name": "SIMD byte absdiff: " + variant, "variant": variant,
+                        "status": "PASS", "batches": []})
+    for round_index in range(samples):
+        for offset in range(3):
+            result = results[(round_index + offset) % 3]
+            if result["status"] != "PASS":
+                continue
+            response = json_command([binary, result["variant"], str(sample_seconds)], timeout=sample_seconds + 10)
+            if response["status"] != "PASS":
+                # An explicitly requested but missing binary is a failure.
+                result.update(status="FAIL", detail=response.get("detail", "Native command failed"))
+                continue
+            batch = response["data"]
+            try:
+                if batch.get("variant") != result["variant"] or batch.get("workload") != "byte_absdiff_sum":
+                    raise ValueError("Wrong variant or workload")
+                if batch.get("status") == "SKIP":
+                    result.update(status="SKIP", detail=batch.get("reason", "Unsupported ISA"))
+                    continue
+                if batch.get("status") != "PASS" or batch.get("correctness") != "PASS":
+                    raise ValueError("Native correctness check failed")
+                if batch.get("checksum") != 705953792 or batch.get("bytes_per_iteration") != 16777216:
+                    raise ValueError("Unexpected fixture checksum or size")
+                iterations, elapsed = batch["iterations"], batch["elapsed_seconds"]
+                if type(iterations) is not int or iterations <= 0 or type(elapsed) not in (float, int) \
+                        or not math.isfinite(elapsed) or elapsed < sample_seconds:
+                    raise ValueError("Invalid or incomplete timing batch")
+                batch["round"] = round_index
+                result["batches"].append(batch)
+            except (ValueError, KeyError, TypeError) as error:
+                result.update(status="FAIL", detail=str(error))
+    for result in results:
+        if result["status"] == "PASS":
+            seconds = [b["elapsed_seconds"] / b["iterations"] for b in result["batches"]]
+            result.update(seconds=seconds, median_seconds=statistics.median(seconds),
+                          MiB_per_second=16 / statistics.median(seconds), sample_target_seconds=sample_seconds)
+    scalar = results[0]
+    if scalar["status"] == "PASS":
+        for result in results:
+            if result["status"] == "PASS":
+                result["speedup_vs_scalar"] = scalar["median_seconds"] / result["median_seconds"]
+    return results
 
 
 def metadata():
@@ -312,6 +465,7 @@ MANUAL = [
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bench", action="store_true", help="also run four benchmarks with timed batches")
+    parser.add_argument("--simd-binary", type=Path, help="run the CI-built ARM64 SIMD benchmark at this path")
     parser.add_argument("--samples", type=int, default=5, help="measured batches per benchmark (3-15, default 5)")
     parser.add_argument("--sample-seconds", type=float, default=0.5, help="batch duration target (0.1-5, default 0.5)")
     parser.add_argument("--sixel", action="store_true", help="display a sixel pattern and ask for a visual result")
@@ -324,19 +478,44 @@ def main(argv=None):
     # Reserve the output before running tests; no overwrite, and mode 0600 for diagnostic metadata.
     fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as stream:
-        report = {"schema_version": 2, "timestamp_utc": stamp, "metadata": metadata(),
+        report = {"schema_version": 3, "timestamp_utc": stamp, "metadata": metadata(),
                   "capabilities": cpu_capabilities(), "power_before": power_snapshot(),
                   "manual_checks": [{"status": "NOT_RUN", "instruction": item} for item in MANUAL],
                   "limitations": ["Run inside the installed Termux app, not adb shell or a VM.",
                                   "No packages are installed/updated and no remote hosts are contacted by this runner.",
-                                  "Benchmarks use installed Python/OpenSSL/zlib; they do not identify selected SIMD kernels.",
+                                  "Python benchmarks do not identify library SIMD dispatch; native SIMD results cover only byte absdiff.",
+                                  "Thermal sampling adds background work; results are not universal package speedups.",
                                   "Storage results include page cache and Python overhead; they are not raw flash bandwidth.",
                                   "UID/SELinux describe this process; target SDK is reported from Termux's environment."]}
         temp_base = os.environ.get("TMPDIR") or str(Path.home())
         with tempfile.TemporaryDirectory(prefix="termux-validation-", dir=temp_base) as temporary:
             directory = Path(temporary)
             report["checks"] = smoke_tests(directory)
-            report["benchmarks"] = benchmarks(directory, args.samples, args.sample_seconds) if args.bench else []
+            report["bridge_before"] = bridge_snapshot()
+            report["checks"].extend(bridge_checks(report["bridge_before"]))
+            monitor = (args.bench or args.simd_binary) and any(
+                report["bridge_before"][key]["status"] == "PASS" for key in ("capabilities", "thermal"))
+            with ThermalSampler(monitor) as sampler:
+                report["benchmarks"] = benchmarks(directory, args.samples, args.sample_seconds) if args.bench else []
+                if args.simd_binary:
+                    report["simd_binary_sha256"] = (hashlib.sha256(args.simd_binary.read_bytes()).hexdigest()
+                                                    if args.simd_binary.is_file() else None)
+                    report["benchmarks"].extend(simd_benchmarks(args.simd_binary, args.samples, args.sample_seconds))
+            report["thermal_samples"] = sampler.samples
+            if sampler.samples:
+                failed = any(sample[key]["status"] == "FAIL" for sample in sampler.samples
+                             for key in ("capabilities", "thermal"))
+                report["checks"].append({"name": "Background API sampling", "status": "FAIL" if failed else "PASS",
+                                         "detail": "Completed %d snapshots; see per-reading availability" % len(sampler.samples)})
+            report["thermal_sample_interval_seconds"] = 5
+            report["bridge_after"] = bridge_snapshot() if args.bench or args.simd_binary else report["bridge_before"]
+            if args.bench or args.simd_binary:
+                report["checks"].extend(dict(item, name=item["name"] + " after benchmarks")
+                                        for item in bridge_checks(report["bridge_after"]))
+            snapshots = [report["bridge_before"], *sampler.samples]
+            if args.bench or args.simd_binary:
+                snapshots.append(report["bridge_after"])
+            report["thermal_summary"] = thermal_summary(snapshots)
         report["visual_checks"] = [sixel_check() if args.sixel else
                                    {"name": "sixel rendering", "status": "NOT_RUN", "detail": "Use --sixel to test"}]
         report["power_after"] = power_snapshot()
@@ -346,6 +525,8 @@ def main(argv=None):
         stream.write("\n")
     for item in report["checks"] + report["benchmarks"]:
         print("%-4s %s" % (item["status"], item["name"]))
+        if "speedup_vs_scalar" in item:
+            print("     %.1f MiB/s, %.2fx scalar" % (item["MiB_per_second"], item["speedup_vs_scalar"]))
     for item in report["visual_checks"]:
         print("%-4s %s (visual check, separate from automated summary)" % (item["status"], item["name"]))
     print("\nCapabilities: " + report["capabilities"]["status"] + " (availability, not measured acceleration)")

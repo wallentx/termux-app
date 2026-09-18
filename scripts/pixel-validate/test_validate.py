@@ -13,6 +13,13 @@ import validate
 
 
 class ValidatorTests(unittest.TestCase):
+    def setUp(self):
+        bridge = mock.patch.object(validate, "bridge_snapshot", return_value={
+            "capabilities": {"status": "SKIP", "detail": "not installed"},
+            "thermal": {"status": "SKIP", "detail": "not installed"}})
+        bridge.start()
+        self.addCleanup(bridge.stop)
+
     def test_sha256_known_answers_detect_a_consistently_wrong_implementation(self):
         self.assertEqual("PASS", validate.sha256_known_answers()["status"])
         with mock.patch.object(validate.hashlib, "sha256") as digest:
@@ -117,7 +124,7 @@ class ValidatorTests(unittest.TestCase):
                                                   "--sixel", "--output", str(report)]))
             self.assertEqual((7, 1.0), bench.call_args.args[1:])
             result = json.loads(report.read_text())
-            self.assertEqual(2, result["schema_version"])
+            self.assertEqual(3, result["schema_version"])
             self.assertEqual(0, result["summary"]["FAIL"])
             self.assertEqual("FAIL", result["visual_checks"][0]["status"])
 
@@ -169,7 +176,7 @@ class ValidatorTests(unittest.TestCase):
                 self.assertEqual(1, validate.main(["--output", str(report)]))
                 bench.assert_not_called()
             result = json.loads(report.read_text())
-            self.assertEqual({"PASS": 0, "FAIL": 1, "SKIP": 1}, result["summary"])
+            self.assertEqual({"PASS": 0, "FAIL": 1, "SKIP": 3}, result["summary"])
             self.assertTrue(all(x["status"] == "NOT_RUN" for x in result["manual_checks"]))
             self.assertEqual([report], list(Path(directory).iterdir()))
             self.assertEqual(0o600, report.stat().st_mode & 0o777)
