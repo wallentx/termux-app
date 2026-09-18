@@ -29,7 +29,7 @@ jobs:
       - name: Install ARM64 correctness-test tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu qemu-user
+          sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user
       - name: Test supported kernels, tails, and unsupported dispatch under QEMU
         run: |
           CC=aarch64-linux-gnu-gcc bash scripts/pixel-validate/native/build.sh "$RUNNER_TEMP/linux-simd"
