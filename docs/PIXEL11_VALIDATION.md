@@ -13,25 +13,28 @@ From a checkout of this fork:
 ```sh
 python3 scripts/pixel-validate/validate.py
 python3 scripts/pixel-validate/validate.py --bench
+python3 scripts/pixel-validate/validate.py --bench --sixel
 ```
 
 Alternatively, download the single script and run it:
 
 ```sh
 curl -fLo termux-validate.py https://raw.githubusercontent.com/wallentx/termux-app/dev/scripts/pixel-validate/validate.py
-python3 termux-validate.py --bench
+python3 termux-validate.py --bench --sixel
 ```
 
 Normal checks typically take 5-30 seconds with healthy tools. Each child command
 has a 10-second timeout; an installed but broken tool can lengthen the run.
-Benchmarks normally add 5-30 seconds. They use three measured samples after a
-warm-up. Child startup failures/timeouts can take longer.
+Benchmarks normally add 10-30 seconds. They use five timed batches after a
+warm-up, targeting at least 0.5 seconds per batch, except for capped storage writes.
+Child startup failures/timeouts can take longer. `--sixel` waits for your visual
+confirmation; allow another 15 seconds to inspect the pattern.
 
 ## Reading the result
 
 The script prints PASS/FAIL/SKIP and writes a new private
 `~/termux-validation-<timestamp>.json`. Exit code 1 means at least one automated
-check or benchmark failed. Existing report files are never overwritten. Set
+check, benchmark, or operator-confirmed visual check failed. Existing report files are never overwritten. Set
 `--output <new-path>` to choose the report location.
 
 | Result | Meaning |
@@ -44,7 +47,9 @@ check or benchmark failed. Existing report files are never overwritten. Set
 
 Checks cover private scripts with shebang arguments, shell pipelines, Python and
 available Node/Bun child execution, tool startup, Pacman's local package database,
-and private storage write/rename/symlink behavior. Version checks for Git/SSH/tmux
+and private storage write/rename/symlink behavior. SHA-256 correctness is checked
+against three fixed known answers, including a multi-block message, even without
+`--bench`. Version checks for Git/SSH/tmux
 and agent tools establish startup only. The script doesn't install/update packages,
 change settings, alter the clipboard, compile code, or contact remote hosts itself.
 It executes installed tools' version commands; custom wrappers may have their own
@@ -60,9 +65,25 @@ Review command output and paths in the report before sharing it.
 
 `--bench` measures SHA-256 throughput, a zlib compression/decompression round trip,
 file write/fsync/readback, and ten shell launches. Input is fixed, synthetic, and
-8 MiB in size. Hashing processes it eight times per sample. Storage numbers include
+8 MiB in size. Each hashing operation processes it eight times and compares against
+a pinned digest independently cross-checked with `sha256sum`. Operations repeat
+until the batch duration target is reached. `seconds` and `median_seconds` report
+latency **per operation**, not total batch time; `batches` records actual elapsed
+time, iteration counts, and whether each duration target was reached. Schema 2
+reports keep these timings distinct from the earlier one-operation samples.
+
+Use `--bench --samples 7 --sample-seconds 1` for seven one-second batches. Accepted
+ranges are 3-15 samples and 0.1-5 seconds. These are duration targets, not hard
+timeouts; a running operation completes before the next duration check.
+Storage is capped at eight operations per batch (328 MiB written including warm-up
+at defaults, at most 968 MiB with 15 samples). A capped batch can be shorter than
+the target; the report records that fact and the total workload bytes.
+
+Storage numbers include
 the page cache and Python overhead; they are not raw flash bandwidth. Compression
 uses a highly compressible repeating input, not a representative file corpus.
+Shell-launch timings include the runner's temporary output files, correctness
+checks, and Python timeout polling, so they are not pure process-spawn latency.
 
 ARM64 capability reporting uses `getauxval` and read-only SVE/SME `prctl` queries in
 the Python process. Feature bits and vector lengths **do not prove that a benchmark
@@ -74,6 +95,26 @@ Compare reports using the same script hash, package versions, phone temperature,
 power/charging state, and workload. Keep the app visible and avoid other heavy
 work during comparison. A kernel-dispatch audit and sustained thermal benchmarks
 remain separate work.
+
+## Sixel rendering check
+
+Run `python3 termux-validate.py --sixel` directly in the visible Termux session,
+without piping or redirecting input/output. It generates its own 240x144 image;
+no image download, Pillow, or `img2sixel` package is needed.
+
+1. Check for three solid bars: red, green, blue from left to right.
+2. Check for a black/white checkerboard beneath the bars, with no missing bands.
+3. Check that `SIXEL END` appears below the image with no overlap or raw escape text.
+4. Enter `pass` or `fail`; Enter alone leaves the result `NOT_RUN`.
+
+The pattern exercises RGB palette definitions, repeat runs, carriage return,
+six-pixel bands (including partial masks), raster dimensions, and DCS termination.
+The result is stored in `visual_checks`, separately from the automated summary.
+Writing sixel bytes successfully never counts as a rendering pass. Noninteractive
+input/output yields `SKIP`; omission of `--sixel` leaves it `NOT_RUN`.
+This is a visual smoke test, not a renderer throughput, large-image, or scrollback
+regression test. It adds ordinary output to the current terminal without clearing
+the screen or changing terminal modes.
 
 ## Selection-menu regression check
 
@@ -94,6 +135,6 @@ They do not reproduce Android 17's actual floating-toolbar implementation. Final
 confirmation of the reported Android 17 symptom requires this device check.
 
 Remaining manual checks are included in every JSON report: session persistence,
-notification actions, shared storage, LAN SSH, package installation/update, sixel,
+notification actions, shared storage, LAN SSH, package installation/update,
 and normal agent workloads. AVF, the planned capability CLI, and other unimplemented
 features are not counted as passing.
