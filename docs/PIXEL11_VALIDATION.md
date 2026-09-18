@@ -86,9 +86,10 @@ remain separate work.
 
 The regression tests cover scheduling, selection state, handle-release refresh,
 single-cell bounds, finished modes and detached views using an Android test runtime.
-The Android 17 path also resets the remote toolbar's hidden state before showing
-it: a live Pixel check found the remote implementation could claim it was shown
-and suppress identical requests while its window was still absent.
+The Android 17 path also alternates the toolbar anchor by one pixel on refresh:
+a live Pixel check found the remote implementation could claim it was shown
+and suppress identical layout requests while its window was still absent.
+The selected text and handle positions are unchanged by this workaround.
 They do not reproduce Android 17's actual floating-toolbar implementation. Final
 confirmation of the reported Android 17 symptom requires this device check.
 

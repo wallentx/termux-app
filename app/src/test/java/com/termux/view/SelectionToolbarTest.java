@@ -91,17 +91,25 @@ public class SelectionToolbarTest {
         assertEquals(0, toolbar.mode.shows);
     }
 
-    @Test public void android17ResetsStaleShownStateBeforeShowingInitialMenu() {
+    @Test public void android17RefreshChangesToolbarAnchorWithoutChangingSelection() {
         // Exercise our API gate on the supported test runtime; real framework behavior
         // is checked separately on the Android 17 device.
         int sdk = Build.VERSION.SDK_INT;
         try {
             ReflectionHelpers.setStaticField(Build.VERSION.class, "SDK_INT", 37);
             select();
+            toolbar.mode.invalidateContentRect();
+            Rect original = new Rect(toolbar.mode.rect);
+            String selected = view.getSelectedText();
             Shadow.<ShadowLooper>extract(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
-            assertEquals(1, toolbar.mode.hides);
+            Rect refreshed = new Rect(original);
+            refreshed.offset(0, -1);
+            assertEquals(refreshed, toolbar.mode.rect);
+            assertEquals(selected, view.getSelectedText());
             assertEquals(1, toolbar.mode.shows);
-            assertTrue(toolbar.mode.hiddenBeforeShow);
+            touch(MotionEvent.ACTION_UP);
+            Shadow.<ShadowLooper>extract(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
+            assertEquals(original, toolbar.mode.rect);
         } finally {
             ReflectionHelpers.setStaticField(Build.VERSION.class, "SDK_INT", sdk);
         }
@@ -156,11 +164,10 @@ public class SelectionToolbarTest {
         final View view;
         final Rect rect = new Rect();
         int refreshes, shows, hides;
-        boolean hiddenBeforeShow;
         TestMode(Callback2 callback, View view) { this.callback = callback; this.view = view; }
         @Override public void invalidateContentRect() { refreshes++; callback.onGetContentRect(this, view, rect); }
         @Override public void hide(long duration) {
-            if (duration == 0) { hiddenBeforeShow = hides > 0; shows++; }
+            if (duration == 0) shows++;
             else hides++;
         }
         @Override public void finish() { callback.onDestroyActionMode(this); }
