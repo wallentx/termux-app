@@ -335,6 +335,28 @@ fork survey did not establish a drop-in implementation for those requirements.
 4. Establish private/shared/guest storage behavior and authenticated bridge transport.
 5. Boot one AVF guest and attach it as a Termux session.
 
-Implementation started with the opt-in SDK/SIMD diagnostic, CI workflow and report
-validator. Default SDK settings, installed apps and device permissions remain
-unchanged. F1 and S1 acceptance still require a CI build and real app-context reports.
+## Implementation checkpoint: 2026-09-18
+
+The installed app defaults to target SDK 37, an ARM64-only APK and the Pacman
+bootstrap. The Pixel has passed native shell/Python execution, private storage,
+known-answer SHA-256, five-sample benchmarks and visual sixel rendering. The
+Android 17 selection-menu fix was also verified on the device. Optional tools
+absent from PATH remain skipped; F1's full developer-workload matrix is unfinished.
+
+The validation runner is published on `dev` in `bf719c3c`; the updated protocol and
+manual rendering check are documented in [PIXEL11_VALIDATION.md](PIXEL11_VALIDATION.md).
+HWCAP/SVE/SME results establish availability and current-thread vector lengths,
+not optimized library dispatch or a measured SIMD speedup.
+
+The next bridge slice is implemented on `wallentx/capabilities` in both
+[termux-api](https://github.com/wallentx/termux-api/tree/wallentx/capabilities) and
+[termux-api-package](https://github.com/wallentx/termux-api-package/tree/wallentx/capabilities).
+`termux-capabilities --json` combines Android permissions, ARM64 capabilities,
+battery/thermal observations and Shizuku connection/authorization state. It does
+not request privileges or execute privileged operations. See the
+[schema and identity decisions](https://github.com/wallentx/termux-api/blob/wallentx/capabilities/docs/CAPABILITIES.md).
+
+This slice retains compatible debug signing, the shared UID and existing
+authenticated transport. It does not complete B1's AVF/ML inventory, B2's new
+protocol, a private-signing migration, or B4's privileged Shizuku adapter. API 37
+build/device validation and the older API operations must be assessed separately.
