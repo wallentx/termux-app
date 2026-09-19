@@ -31,3 +31,12 @@ Robolectric regression tests in `app/src/test/java/com/termux/terminal/TerminalS
 also check all 64 masks, maximum repeats, unchanged neighbors, cached-color
 invalidation, transparent overpaint, resizing and invalid requests against
 independent expected pixels. Run them in CI, not on the development phone.
+
+## Full-size bitmap copy comparison
+
+The same JAR also contains `com.termux.terminal.BitmapCopyBenchmark`. It compares
+the prior full-image pixel array, default Canvas, unfiltered SRC Canvas, and
+128 KiB pixel strips at small, 960x600-class and 1920x1080-class sizes.
+Each method must match the reference pixels (including partial alpha and density)
+before five alternating-order samples of at least 200 ms each. This is a resize
+microbenchmark, not proof of an end-to-end frame-time improvement.
