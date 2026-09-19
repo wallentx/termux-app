@@ -153,6 +153,20 @@ public final class TerminalRow {
         return false;
     }
 
+    /** Write a printable ASCII prefix into a validated, simple, non-image row interval. */
+    int writeAscii(byte[] bytes, int start, int end, int column, long style) {
+        int index = start;
+        while (index < end) {
+            int value = bytes[index];
+            if (value < 32 || value > 126) break;
+            mText[column + index - start] = (char) value;
+            index++;
+        }
+        int count = index - start;
+        Arrays.fill(mStyle, column, column + count, style);
+        return count;
+    }
+
     /** Fill a validated column interval, retaining the character path for complex rows. */
     void fillInterval(int start, int end, int codePoint, long style) {
         if (!mHasNonOneWidthOrSurrogateChars && !mHasTerminalBitmap

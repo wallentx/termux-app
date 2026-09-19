@@ -686,8 +686,40 @@ public final class TerminalEmulator {
      * @param length the number of bytes in the array to process
      */
     public void append(byte[] buffer, int length) {
-        for (int i = 0; i < length; i++)
-            processByte(buffer[i]);
+        for (int i = 0; i < length; ) {
+            // Leave single-byte input and control/UTF-8 boundaries on the original parser.
+            if (i + 1 < length && buffer[i] >= 32 && buffer[i] <= 126
+                && buffer[i + 1] >= 32 && buffer[i + 1] <= 126) {
+                int consumed = appendAsciiRun(buffer, i, length);
+                if (consumed > 0) {
+                    i += consumed;
+                    continue;
+                }
+            }
+            processByte(buffer[i++]);
+        }
+    }
+
+    private int appendAsciiRun(byte[] buffer, int offset, int length) {
+        if (mUtf8ToFollow != 0 || mEscapeState != ESC_NONE || mInsertMode || mAboutToAutoWrap
+            || (mUseLineDrawingUsesG0 ? mUseLineDrawingG0 : mUseLineDrawingG1)
+            || !isDecsetInternalBitSet(DECSET_BIT_AUTOWRAP)
+            || mLeftMargin != 0 || mRightMargin != mColumns || mCursorCol < 0 || mCursorCol >= mRightMargin - 1)
+            return 0;
+
+        TerminalRow row = mScreen.allocateFullLineIfNecessary(mScreen.externalToInternalRow(mCursorRow));
+        if (row.mHasNonOneWidthOrSurrogateChars || row.mHasTerminalBitmap) return 0;
+
+        // A span cannot cross a row edge. Let emitCodePoint handle the next wrap/scroll.
+        // Keep bitmap collection periodic without checking once per printable character.
+        mScreen.doTerminalBitmapsGC(300000);
+        int end = offset + Math.min(length - offset, mRightMargin - mCursorCol);
+        int consumed = row.writeAscii(buffer, offset, end, mCursorCol, getStyle());
+        mLastEmittedCodePoint = buffer[offset + consumed - 1];
+        mContinueSequence = false;
+        mAboutToAutoWrap = mCursorCol + consumed == mRightMargin;
+        mCursorCol = Math.min(mCursorCol + consumed, mRightMargin - 1);
+        return consumed;
     }
 
     private void processByte(byte byteToProcess) {
