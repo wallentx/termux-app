@@ -92,6 +92,21 @@ public class TerminalRendererBitmapTest {
         assertEquals(new Rect(12, 0, 16, 3), c.sources.get(3));
         assertTrue(c.text.toString().contains("X"));
     }
+    @Test public void insertedTextShiftsImageSlicesWithoutSmearingAcrossRow() {
+        TerminalEmulator t = terminal();
+        TerminalBuffer b = t.getScreen();
+        image(b, 0, 0, 8);
+        byte[] edit = "\033[1;3H\033[@X".getBytes(StandardCharsets.UTF_8);
+        t.append(edit, edit.length);
+        RecordingCanvas c = render(t);
+        assertEquals(3, c.sources.size());
+        assertEquals(new Rect(0, 0, 4, 3), c.sources.get(0));
+        assertEquals(new Rect(4, 0, 8, 3), c.sources.get(1));
+        float width = new TerminalRenderer(16, Typeface.MONOSPACE).getFontWidth();
+        assertEquals(5 * width, c.destinations.get(1).right, .001f);
+        assertTrue(c.text.toString().contains("X"));
+    }
+
     @Test public void neighboringImagesRemainSeparateAndMissingBitmapsAreSkipped() {
         TerminalEmulator t = terminal();
         TerminalBuffer b = t.getScreen();

@@ -87,6 +87,21 @@ public class TerminalBufferBulkTest extends TestCase {
         }
     }
 
+    public void testComplexAndBitmapSelfCopiesMatchUnmodifiedSourceStyles() {
+        for (boolean complex : new boolean[]{false, true}) {
+            for (boolean images : new boolean[]{false, true}) {
+                for (int[] range : new int[][]{{0, 18, 2}, {2, 20, 0}}) {
+                    TerminalBuffer actual = seeded(20, 2, complex, images);
+                    TerminalBuffer expected = seeded(20, 2, complex, images);
+                    TerminalBuffer snapshot = seeded(20, 2, complex, images);
+                    actual.mLines[0].copyInterval(actual.mLines[0], range[0], range[1], range[2]);
+                    expected.mLines[0].copyInterval(snapshot.mLines[0], range[0], range[1], range[2]);
+                    assertSameBuffer(expected, actual);
+                }
+            }
+        }
+    }
+
     public void testCopyToComplexRowKeepsUntouchedCombiningAndImageCells() {
         TerminalBuffer actual = seeded(20, 2, true, true);
         TerminalBuffer expected = seeded(20, 2, true, true);
