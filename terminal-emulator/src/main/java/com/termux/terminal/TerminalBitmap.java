@@ -439,14 +439,15 @@ public class TerminalBitmap {
                 return null;
             }
 
-            int[] pixels = new int[bitmap.getWidth() * bitmap.getHeight()];
-            bitmap.getPixels(pixels, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
-
             newBitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888);
 
             int newWidth = Math.min(bitmap.getWidth(), bitmapWidth);
             int newHeight = Math.min(bitmap.getHeight(), bitmapHeight);
-            newBitmap.setPixels(pixels, 0, bitmap.getWidth(), 0, 0, newWidth, newHeight);
+            // Copy directly between native bitmap buffers. Explicit equal-sized rectangles
+            // avoid density scaling and leave newly exposed pixels transparent, without a
+            // full-size Java pixel array and its two extra copies on every growth step.
+            Rect copyRect = new Rect(0, 0, newWidth, newHeight);
+            new Canvas(newBitmap).drawBitmap(bitmap, copyRect, copyRect, null);
             return newBitmap;
         } catch (Throwable t) {
             if (t instanceof OutOfMemoryError) System.gc();

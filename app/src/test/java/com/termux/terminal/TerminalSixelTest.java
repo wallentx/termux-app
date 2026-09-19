@@ -6,11 +6,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
+import org.robolectric.annotation.GraphicsMode;
 import java.util.Random;
 import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 28, application = Application.class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class TerminalSixelTest {
     private TerminalSixel create(int width, int height) {
         return new TerminalSixel(null, Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888));
