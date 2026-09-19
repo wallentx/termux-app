@@ -30,6 +30,12 @@ static const char *map_path(const char *path) {
     if(!strcmp(path,"/etc/resolv.conf")) {
         const char *resolv=getenv("AETHER_RESOLV_CONF"); if(resolv && *resolv) return resolv;
     }
+    if(!strcmp(path,"/sys/class/dmi/id/sys_vendor")) {
+        const char *vendor=getenv("AETHER_SYS_VENDOR_FILE"); if(vendor && *vendor) return vendor;
+    }
+    if(!strcmp(path,"/sys/class/dmi/id/product_name")) {
+        const char *model=getenv("AETHER_PRODUCT_NAME_FILE"); if(model && *model) return model;
+    }
     return path;
 }
 FILE *fopen(const char *path,const char *mode) { FILE *(*fn)(const char*,const char*)=dlsym(RTLD_NEXT,"fopen"); return fn(map_path(path),mode); }

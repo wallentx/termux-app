@@ -19,7 +19,11 @@ platform; a VPN transition has not yet been tested. The two libcs never coexist
 in one process. File wrappers map `/etc/resolv.conf` to Termux's existing resolver
 file and common certificate paths to its CA bundle. Programs with independent
 DNS implementations can still use the static resolv.conf contents; they are not
-claimed to use Android Private DNS. Static binaries/direct syscalls are outside
+claimed to use Android Private DNS. Reads of `/sys/class/dmi/id/sys_vendor` and
+`/sys/class/dmi/id/product_name` map to private files populated from Android's
+`Build.MANUFACTURER` and `Build.MODEL` at app startup. This lets Linux programs
+report the real device make/model without inventing DMI serial numbers or
+motherboard information. It does not change the system's sysfs or CPU features. Static binaries/direct syscalls are outside
 this preload's coverage. Do not claim universal `/etc` virtualization.
 
 The preload also makes readlink(/proc/self/exe) report the requested program,
@@ -30,7 +34,7 @@ Bionic subprocesses, and environments that remove the compatibility variables
 are not yet covered. Existing syscall and filesystem constraints still apply.
 
 `aether-probe` checks app UID, executable identity, resolv.conf visibility,
-Android-backed DNS success/failure/numeric cases, and execve/posix_spawn children.
+Android manufacturer/model files, Android-backed DNS success/failure/numeric cases, and execve/posix_spawn children.
 Run it in a native Termux session, not ADB shell or run-as, to validate SDK-37
 execution restrictions. Then validate Geekbench --sysinfo and a real HTTPS
 client. A successful probe is not a benchmark or evidence of a performance gain.

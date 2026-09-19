@@ -1,6 +1,7 @@
 package com.termux.app;
 
 import android.content.Context;
+import android.os.Build;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
@@ -33,7 +34,15 @@ final class BundledAetherInstaller {
                     BundledRishInstaller.installFile(new File(runtime, name), bytes.toByteArray(), false);
                 }
             }
+            // Linux programs commonly identify hardware through DMI sysfs files,
+            // which are absent on Android. Use this device's public Android values.
+            BundledRishInstaller.installFile(new File(runtime, "sys_vendor"),
+                (Build.MANUFACTURER + "\n").getBytes(StandardCharsets.UTF_8), false);
+            BundledRishInstaller.installFile(new File(runtime, "product_name"),
+                (Build.MODEL + "\n").getBytes(StandardCharsets.UTF_8), false);
             String script = "#!/system/bin/sh\nexport AETHER_RUNTIME='" + runtime.getAbsolutePath()
+                + "'\nexport AETHER_SYS_VENDOR_FILE='" + new File(runtime, "sys_vendor").getAbsolutePath()
+                + "'\nexport AETHER_PRODUCT_NAME_FILE='" + new File(runtime, "product_name").getAbsolutePath()
                 + "'\nexport AETHER_RESOLV_CONF='" + TermuxConstants.TERMUX_PREFIX_DIR_PATH
                 + "/etc/resolv.conf'\nexec '" + helper.getAbsolutePath() + "' \"$@\"\n";
             BundledRishInstaller.installFile(new File(runtime, "aether-run"),
