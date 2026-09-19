@@ -141,6 +141,16 @@ jobs:
           name: buffer-benchmark
           path: ${{ runner.temp }}/buffer-benchmark/artifact/
           if-no-files-found: error
+      - name: Build text comparison harness from existing emulator classes
+        if: env.BUILD_ALL_APKS != 'true'
+        run: bash scripts/text-benchmark/build.sh "$RUNNER_TEMP/text-benchmark"
+      - name: Attach text comparison harness
+        if: env.BUILD_ALL_APKS != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: text-benchmark
+          path: ${{ runner.temp }}/text-benchmark/artifact/
+          if-no-files-found: error
       - name: Attach universal APK file
         if: env.BUILD_ALL_APKS == 'true'
         uses: actions/upload-artifact@v7
