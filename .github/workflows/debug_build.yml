@@ -121,6 +121,16 @@ jobs:
               abis = {n.split('/')[1] for n in apk.namelist() if n.startswith('lib/') and n.endswith('.so')}
               assert abis == {'arm64-v8a'}, abis
           PY
+      - name: Build sixel comparison harness from existing emulator classes
+        if: env.BUILD_ALL_APKS != 'true'
+        run: bash scripts/sixel-benchmark/build.sh "$RUNNER_TEMP/sixel-benchmark"
+      - name: Attach sixel comparison harness
+        if: env.BUILD_ALL_APKS != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sixel-benchmark
+          path: ${{ runner.temp }}/sixel-benchmark/artifact/
+          if-no-files-found: error
       - name: Attach universal APK file
         if: env.BUILD_ALL_APKS == 'true'
         uses: actions/upload-artifact@v7
