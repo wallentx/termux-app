@@ -48,6 +48,11 @@ public final class TerminalBuffer {
     /** The time since last garbage collection for all the {@link TerminalBitmap} that are loaded in the terminal. */
     private long mTerminalBitmapsLastGC;
 
+    // Trigger a reference sweep after this much new image data, even within the usual
+    // 30-second interval. This is not a cap: visible and scrollback images remain live.
+    private static final long BITMAP_GC_ALLOCATION_INTERVAL = 16L * 1024 * 1024;
+    private long mTerminalBitmapBytesSinceGC;
+
     /**
      * The bitmap number start for {@link #mTerminalBitmaps} keys.
      *
@@ -577,6 +582,7 @@ public final class TerminalBuffer {
 
     public synchronized void clearTerminalBitmaps() {
         mTerminalBitmaps.clear();
+        mTerminalBitmapBytesSinceGC = 0;
     }
 
     public synchronized Bitmap getSixelBitmap(long style) {
@@ -627,6 +633,7 @@ public final class TerminalBuffer {
             return 0;
         }
         mTerminalBitmaps.put(bitmapNum, terminalBitmap);
+        mTerminalBitmapBytesSinceGC += terminalBitmap.getBitmap().getAllocationByteCount();
 
         doTerminalBitmapsGC(30000);
         return terminalBitmap.mScrollLines;
@@ -708,6 +715,7 @@ public final class TerminalBuffer {
             return new int[] {0, 0};
         }
         mTerminalBitmaps.put(bitmapNum, terminalBitmap);
+        mTerminalBitmapBytesSinceGC += terminalBitmap.getBitmap().getAllocationByteCount();
 
         doTerminalBitmapsGC(30000);
         return terminalBitmap.mCursorDelta;
@@ -743,7 +751,8 @@ public final class TerminalBuffer {
     }
 
     public synchronized void doTerminalBitmapsGC(int timeDelta) {
-        if (mTerminalBitmaps.isEmpty() || mTerminalBitmapsLastGC + timeDelta > SystemClock.uptimeMillis()) {
+        if (mTerminalBitmaps.isEmpty() || (mTerminalBitmapBytesSinceGC < BITMAP_GC_ALLOCATION_INTERVAL &&
+            mTerminalBitmapsLastGC + timeDelta > SystemClock.uptimeMillis())) {
             return;
         }
 
@@ -769,6 +778,7 @@ public final class TerminalBuffer {
         }
 
         mTerminalBitmapsLastGC = SystemClock.uptimeMillis();
+        mTerminalBitmapBytesSinceGC = 0;
     }
 
 }
