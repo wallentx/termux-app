@@ -131,6 +131,16 @@ jobs:
           name: sixel-benchmark
           path: ${{ runner.temp }}/sixel-benchmark/artifact/
           if-no-files-found: error
+      - name: Build buffer comparison harness from existing emulator classes
+        if: env.BUILD_ALL_APKS != 'true'
+        run: bash scripts/buffer-benchmark/build.sh "$RUNNER_TEMP/buffer-benchmark"
+      - name: Attach buffer comparison harness
+        if: env.BUILD_ALL_APKS != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: buffer-benchmark
+          path: ${{ runner.temp }}/buffer-benchmark/artifact/
+          if-no-files-found: error
       - name: Attach universal APK file
         if: env.BUILD_ALL_APKS == 'true'
         uses: actions/upload-artifact@v7
