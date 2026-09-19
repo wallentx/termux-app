@@ -416,6 +416,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setTermuxSessionsListView();
 
+        // Register before creating a session so the first addition also notifies the drawer.
+        mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
+
         final Intent intent = getIntent();
         setIntent(null);
 
@@ -450,8 +453,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             }
         }
 
-        // Update the {@link TerminalSession} and {@link TerminalEmulator} clients.
-        mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
     }
 
     @Override
