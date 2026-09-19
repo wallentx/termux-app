@@ -688,7 +688,8 @@ public final class TerminalEmulator {
     public void append(byte[] buffer, int length) {
         for (int i = 0; i < length; ) {
             // Leave single-byte input and control/UTF-8 boundaries on the original parser.
-            if (i + 1 < length && buffer[i] >= 32 && buffer[i] <= 126
+            if (i + 1 < length && isDecsetInternalBitSet(DECSET_BIT_AUTOWRAP)
+                && buffer[i] >= 32 && buffer[i] <= 126
                 && buffer[i + 1] >= 32 && buffer[i + 1] <= 126) {
                 int consumed = appendAsciiRun(buffer, i, length);
                 if (consumed > 0) {
@@ -703,7 +704,6 @@ public final class TerminalEmulator {
     private int appendAsciiRun(byte[] buffer, int offset, int length) {
         if (mUtf8ToFollow != 0 || mEscapeState != ESC_NONE || mInsertMode || mAboutToAutoWrap
             || (mUseLineDrawingUsesG0 ? mUseLineDrawingG0 : mUseLineDrawingG1)
-            || !isDecsetInternalBitSet(DECSET_BIT_AUTOWRAP)
             || mLeftMargin != 0 || mRightMargin != mColumns || mCursorCol < 0 || mCursorCol >= mRightMargin - 1)
             return 0;
 
