@@ -5,6 +5,7 @@ plugins {
 // Explicit diagnostic mode: adds probes and restricts installation to Android 17.
 def pixelProbe = providers.gradleProperty("pixelProbe").orNull == "true"
 def arm64Only = rootProject.ext.termuxArm64Only
+def aetherPrototype = providers.gradleProperty("aetherPrototype").orNull == "true"
 if (pixelProbe && gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }) {
     throw new GradleException("Pixel probes are debug-only; use :app:assembleDebug")
 }
@@ -154,7 +155,13 @@ android {
     packagingOptions {
         jniLibs {
             useLegacyPackaging true
+            keepDebugSymbols += '**/libaether-loader.so'
         }
+    }
+
+    if (aetherPrototype) {
+        sourceSets.main.assets.srcDirs 'src/aether/assets', "$buildDir/generated/aether/assets"
+        sourceSets.main.jniLibs.srcDirs 'src/aether/jniLibs', "$buildDir/generated/aether/jniLibs"
     }
 
     applicationVariants.all { variant ->
@@ -179,6 +186,15 @@ android {
             manifest.srcFile 'src/pixelProbe/AndroidManifest.xml'
         }
     }
+}
+
+if (aetherPrototype) {
+    def prepareAether = tasks.register('prepareAether', Exec) {
+        workingDir rootProject.projectDir
+        commandLine 'bash', 'scripts/aether/build.sh',
+            "$buildDir/generated/aether", "${android.sdkDirectory}/ndk/${android.ndkVersion}"
+    }
+    tasks.named('preBuild').configure { dependsOn prepareAether }
 }
 
 dependencies {

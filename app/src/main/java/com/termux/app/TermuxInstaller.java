@@ -246,6 +246,7 @@ final class TermuxInstaller {
                     TermuxShellEnvironment.writeEnvironmentToFile(activity);
 
                     BundledRishInstaller.install(activity, TERMUX_PREFIX_DIR);
+                    BundledAetherInstaller.install(activity);
                     activity.runOnUiThread(whenDone);
 
                 } catch (final Exception e) {

@@ -6,6 +6,10 @@ on:
         description: 'Build all architectures and all bootstrap variants'
         type: boolean
         default: false
+      aether_prototype:
+        description: 'Include the experimental ARM64 app-UID glibc runner'
+        type: boolean
+        default: false
   push:
     branches:
       - master
@@ -45,10 +49,24 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install SDK and NDK
         run: sdkmanager 'platforms;android-37.2' 'build-tools;37.0.0' 'ndk;29.0.14206865'
+      - name: Prepare Aether prototype toolchain and accompanying sources
+        if: inputs.aether_prototype
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          bash scripts/aether/source-bundle.sh "$RUNNER_TEMP/aether-source"
+      - name: Attach Aether accompanying sources
+        if: inputs.aether_prototype
+        uses: actions/upload-artifact@v7
+        with:
+          name: aether-source
+          path: ${{ runner.temp }}/aether-source/
+          if-no-files-found: error
       - name: Build APKs
         shell: bash {0}
         env:
           PACKAGE_VARIANT: ${{ matrix.package_variant }}
+          AETHER_PROTOTYPE: ${{ inputs.aether_prototype }}
         run: |
           exit_on_error() { echo "$1"; exit 1; }
 
@@ -87,7 +105,7 @@ jobs:
               build_profile=all
               abis=(universal arm64-v8a armeabi-v7a x86_64 x86)
           fi
-          if ! ./gradlew :app:assembleDebug -PtermuxBuildProfile="$build_profile"; then
+          if ! ./gradlew :app:assembleDebug -PtermuxBuildProfile="$build_profile" -PaetherPrototype="$AETHER_PROTOTYPE"; then
             exit_on_error "Build failed for '$APK_VERSION_TAG' build."
           fi
 
@@ -124,6 +142,13 @@ jobs:
               for name in ('termux-rish', 'LICENSE', 'NOTICE'):
                   assert apk.read('assets/rish/' + name), name
           PY
+      - name: Attach Aether execution probe
+        if: inputs.aether_prototype
+        uses: actions/upload-artifact@v7
+        with:
+          name: aether-probe
+          path: app/build/generated/aether/probes/
+          if-no-files-found: error
       - name: Build sixel comparison harness from existing emulator classes
         if: env.BUILD_ALL_APKS != 'true'
         run: bash scripts/sixel-benchmark/build.sh "$RUNNER_TEMP/sixel-benchmark"
