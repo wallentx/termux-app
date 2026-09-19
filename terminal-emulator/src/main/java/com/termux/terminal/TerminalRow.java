@@ -62,6 +62,16 @@ public final class TerminalRow {
 
     /** NOTE: The sourceX2 is exclusive. */
     public void copyInterval(TerminalRow line, int sourceX1, int sourceX2, int destinationX) {
+        if (!mHasNonOneWidthOrSurrogateChars && !line.mHasNonOneWidthOrSurrogateChars
+            && !mHasTerminalBitmap && !line.mHasTerminalBitmap
+            && sourceX1 >= 0 && sourceX2 >= sourceX1 && sourceX2 <= line.mColumns
+            && destinationX >= 0 && destinationX <= mColumns - (sourceX2 - sourceX1)) {
+            int length = sourceX2 - sourceX1;
+            // arraycopy handles overlap, including the styles of a rightward self-copy.
+            System.arraycopy(line.mText, sourceX1, mText, destinationX, length);
+            System.arraycopy(line.mStyle, sourceX1, mStyle, destinationX, length);
+            return;
+        }
         mHasNonOneWidthOrSurrogateChars |= line.mHasNonOneWidthOrSurrogateChars;
         final int x1 = line.findStartOfColumn(sourceX1);
         final int x2 = line.findStartOfColumn(sourceX2);
@@ -143,12 +153,23 @@ public final class TerminalRow {
         return false;
     }
 
+    /** Fill a validated column interval, retaining the character path for complex rows. */
+    void fillInterval(int start, int end, int codePoint, long style) {
+        if (!mHasNonOneWidthOrSurrogateChars && !mHasTerminalBitmap
+            && codePoint >= ' ' && codePoint <= '~' && !TextStyle.isTerminalBitmap(style)) {
+            Arrays.fill(mText, start, end, (char) codePoint);
+            Arrays.fill(mStyle, start, end, style);
+        } else {
+            for (int column = start; column < end; column++) setChar(column, codePoint, style);
+        }
+    }
+
     public void clear(long style) {
         Arrays.fill(mText, ' ');
         Arrays.fill(mStyle, style);
         mSpaceUsed = mColumns;
         mHasNonOneWidthOrSurrogateChars = false;
-        mHasTerminalBitmap = false;
+        mHasTerminalBitmap = TextStyle.isTerminalBitmap(style);
     }
 
     // https://github.com/steven676/Android-Terminal-Emulator/commit/9a47042620bec87617f0b4f5d50568535668fe26
