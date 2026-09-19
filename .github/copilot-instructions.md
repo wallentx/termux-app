@@ -71,7 +71,7 @@ This is an Android terminal emulator application with a Linux environment. The r
 - Update `versionName` in `app/build.gradle` when releasing
 
 ### 5. Build Variants
-- Two package variants: `apt-android-7` (default) and `apt-android-5`
+- Three package variants: `pacman-android-7` (default), `apt-android-7`, and `apt-android-5`
 - Set via `TERMUX_PACKAGE_VARIANT` environment variable
 - Bootstrap packages must match the variant
 - Debug builds are signed with test key (for development only)

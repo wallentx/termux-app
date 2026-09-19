@@ -26,6 +26,20 @@ public class TerminalBitmapGcTest {
         f.setAccessible(true);
         return (Map<?, ?>) f.get(b);
     }
+    @Test public void scrollingPreservesNonAdjacentRectangleCopy() throws Exception {
+        TerminalBuffer b = new TerminalBuffer(8, 8, 8);
+        b.sixelStart(6, 6);
+        assertTrue(b.sixelReadData('~', 6));
+        b.sixelEnd(0, 0, 6, 6);
+        long style = b.mLines[b.externalToInternalRow(0)].getStyle(0);
+        assertNotNull(b.getSixelBitmap(style));
+        b.blockCopy(0, 0, 1, 1, 0, 5);
+        b.scrollDownOneLine(0, 8, TextStyle.NORMAL);
+        assertNotNull("Copied cell still owns the scrolled image", b.getSixelBitmap(style));
+        assertEquals(style, b.mLines[b.externalToInternalRow(4)].getStyle(0));
+        for (int i = 0; i < 5; i++) b.scrollDownOneLine(0, 8, TextStyle.NORMAL);
+        assertTrue("Last reference scrolled out", images(b).isEmpty());
+    }
     @Test public void allocationPressureReleasesReplacedImagesBeforeTimer() throws Exception {
         TerminalBuffer b = new TerminalBuffer(64, 256, 64);
         for (int i = 0; i < 40; i++) image(b);

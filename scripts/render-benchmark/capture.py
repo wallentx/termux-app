@@ -68,7 +68,10 @@ def main():
         while True:
             raw = adb('dumpsys gfxinfo com.termux framestats')
             frames.update({k: v for k, v in parse_frames(raw).items() if k > cutoff})
-            if state().get('state') == 'done':
+            if state() == {'phase': phase, 'state': 'done'}:
+                # Completion can race the preceding sample; collect the tail before ACK.
+                raw = adb('dumpsys gfxinfo com.termux framestats')
+                frames.update({k: v for k, v in parse_frames(raw).items() if k > cutoff})
                 break
             if time.monotonic() > deadline:
                 raise TimeoutError('Collecting ' + phase)
@@ -96,6 +99,8 @@ def main():
             break
         except (ValueError, subprocess.CalledProcessError):
             time.sleep(.2)
+    else:
+        raise TimeoutError('Waiting for valid workload result.json')
     (args.output / 'summary.json').write_text(json.dumps(summaries, indent=2))
 
 

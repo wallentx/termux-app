@@ -69,13 +69,12 @@ public class TextSelectionCursorController implements CursorController {
         mStartHandle.hide();
         mEndHandle.hide();
 
-        if (mActionMode != null) {
-            // This will hide the TextSelectionCursorController
-            mActionMode.finish();
-        }
-
+        ActionMode mode = mActionMode;
+        mActionMode = null;
         mSelX1 = mSelY1 = mSelX2 = mSelY2 = -1;
         mIsSelectingText = false;
+        // Detach first: finish() can synchronously call onDestroyActionMode().
+        if (mode != null) mode.finish();
 
         return true;
     }
@@ -162,7 +161,12 @@ public class TextSelectionCursorController implements CursorController {
 
             @Override
             public void onDestroyActionMode(ActionMode mode) {
-                if (mActionMode == mode) mActionMode = null;
+                if (mActionMode != mode) return;
+                mActionMode = null;
+                // Framework dismissal must bypass the long-press debounce and notify
+                // TerminalView so pending toolbar work and copy mode are cleared too.
+                mShowStartTime = 0;
+                terminalView.stopTextSelectionMode();
             }
 
         };

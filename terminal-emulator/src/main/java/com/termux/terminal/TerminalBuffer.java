@@ -734,14 +734,12 @@ public final class TerminalBuffer {
             }
         }
 
-        TerminalRow nextLine = mLines[(row + 1) % mTotalRows];
-        if (nextLine != null && nextLine.mHasTerminalBitmap) {
+        // Rectangle copies can leave references anywhere, not just in the next row.
+        for (int line = 0; line < mLines.length && !bitmapsToRemove.isEmpty(); line++) {
+            TerminalRow other = mLines[line];
+            if (line == row || other == null || !other.mHasTerminalBitmap) continue;
             for (int column = 0; column < mColumns; column++) {
-                long columnStyle = nextLine.getStyle(column);
-                int bitmapNum = TextStyle.getTerminalBitmapNum(columnStyle);
-                if (bitmapNum >= TERMINAL_BITMAP__NUM_START) {
-                    bitmapsToRemove.remove(bitmapNum);
-                }
+                bitmapsToRemove.remove(TextStyle.getTerminalBitmapNum(other.getStyle(column)));
             }
         }
 

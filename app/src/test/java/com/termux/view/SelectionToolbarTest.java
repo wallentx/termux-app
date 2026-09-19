@@ -87,8 +87,21 @@ public class SelectionToolbarTest {
     @Test public void finishedActionModeIsNotReshownByPendingCallback() {
         select();
         toolbar.mode.finish();
+        assertFalse("Framework dismissal must exit selection immediately", view.isSelectingText());
+        assertNull(view.getSelectedText());
         Shadow.<ShadowLooper>extract(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
         assertEquals(0, toolbar.mode.shows);
+    }
+
+    @Test public void normalDismissalFinishesModeOnlyOnce() {
+        select();
+        Object controller = ReflectionHelpers.getField(view, "mTextSelectionCursorController");
+        ReflectionHelpers.setField(controller, "mShowStartTime", 0L);
+        view.stopTextSelectionMode();
+        assertFalse(view.isSelectingText());
+        assertEquals(1, toolbar.mode.finishes);
+        view.stopTextSelectionMode();
+        assertEquals(1, toolbar.mode.finishes);
     }
 
     @Test public void android17RefreshChangesToolbarAnchorWithoutChangingSelection() {
@@ -163,14 +176,14 @@ public class SelectionToolbarTest {
         final Callback2 callback;
         final View view;
         final Rect rect = new Rect();
-        int refreshes, shows, hides;
+        int refreshes, shows, hides, finishes;
         TestMode(Callback2 callback, View view) { this.callback = callback; this.view = view; }
         @Override public void invalidateContentRect() { refreshes++; callback.onGetContentRect(this, view, rect); }
         @Override public void hide(long duration) {
             if (duration == 0) shows++;
             else hides++;
         }
-        @Override public void finish() { callback.onDestroyActionMode(this); }
+        @Override public void finish() { finishes++; callback.onDestroyActionMode(this); }
         @Override public void invalidate() {}
         @Override public void setTitle(CharSequence title) {}
         @Override public void setTitle(int resId) {}
