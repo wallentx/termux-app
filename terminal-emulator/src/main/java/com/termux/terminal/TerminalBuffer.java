@@ -48,6 +48,11 @@ public final class TerminalBuffer {
     /** The time since last garbage collection for all the {@link TerminalBitmap} that are loaded in the terminal. */
     private long mTerminalBitmapsLastGC;
 
+    // Trigger a reference sweep after this much new image data, even within the usual
+    // 30-second interval. This is not a cap: visible and scrollback images remain live.
+    private static final long BITMAP_GC_ALLOCATION_INTERVAL = 16L * 1024 * 1024;
+    private long mTerminalBitmapBytesSinceGC;
+
     /**
      * The bitmap number start for {@link #mTerminalBitmaps} keys.
      *
@@ -509,8 +514,8 @@ public final class TerminalBuffer {
                 "Illegal arguments! blockSet(" + sx + ", " + sy + ", " + w + ", " + h + ", " + val + ", " + mColumns + ", " + mScreenRows + ")");
         }
         for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++)
-                setChar(sx + x, sy + y, val, style);
+            if (w > 0)
+                allocateFullLineIfNecessary(externalToInternalRow(sy + y)).fillInterval(sx, sx + w, val, style);
             if (sx + w == mColumns && val == ' ') {
                 clearLineWrap(sy + y);
             }
@@ -577,6 +582,7 @@ public final class TerminalBuffer {
 
     public synchronized void clearTerminalBitmaps() {
         mTerminalBitmaps.clear();
+        mTerminalBitmapBytesSinceGC = 0;
     }
 
     public synchronized Bitmap getSixelBitmap(long style) {
@@ -586,18 +592,25 @@ public final class TerminalBuffer {
 
 
     public synchronized Rect getSixelRect(long style) {
+        Rect rect = new Rect();
+        return getSixelRect(style, rect) ? rect : null;
+    }
+
+    public synchronized boolean getSixelRect(long style, Rect out) {
         TerminalBitmap terminalBitmap = getTerminalBitmap(style);
         if (terminalBitmap == null) {
-            return null;
+            out.setEmpty();
+            return false;
         }
 
         int x = TextStyle.getTerminalBitmapX(style);
         int y = TextStyle.getTerminalBitmapY(style);
-        return new Rect(
+        out.set(
             x * terminalBitmap.mCellWidth,
             y * terminalBitmap.mCellHeight,
             (x + 1) * terminalBitmap.mCellWidth,
             (y + 1) * terminalBitmap.mCellHeight);
+        return true;
     }
 
 
@@ -620,6 +633,7 @@ public final class TerminalBuffer {
             return 0;
         }
         mTerminalBitmaps.put(bitmapNum, terminalBitmap);
+        mTerminalBitmapBytesSinceGC += terminalBitmap.getBitmap().getAllocationByteCount();
 
         doTerminalBitmapsGC(30000);
         return terminalBitmap.mScrollLines;
@@ -701,6 +715,7 @@ public final class TerminalBuffer {
             return new int[] {0, 0};
         }
         mTerminalBitmaps.put(bitmapNum, terminalBitmap);
+        mTerminalBitmapBytesSinceGC += terminalBitmap.getBitmap().getAllocationByteCount();
 
         doTerminalBitmapsGC(30000);
         return terminalBitmap.mCursorDelta;
@@ -719,16 +734,12 @@ public final class TerminalBuffer {
             }
         }
 
-        if (row + 1 < mTotalRows) {
-            TerminalRow nextLine = mLines[row + 1];
-            if (nextLine.mHasTerminalBitmap) {
-                for (int column = 0; column < mColumns; column++) {
-                    long columnStyle = nextLine.getStyle(column);
-                    int bitmapNum = TextStyle.getTerminalBitmapNum(columnStyle);
-                    if (bitmapNum >= TERMINAL_BITMAP__NUM_START) {
-                        bitmapsToRemove.add(bitmapNum);
-                    }
-                }
+        // Rectangle copies can leave references anywhere, not just in the next row.
+        for (int line = 0; line < mLines.length && !bitmapsToRemove.isEmpty(); line++) {
+            TerminalRow other = mLines[line];
+            if (line == row || other == null || !other.mHasTerminalBitmap) continue;
+            for (int column = 0; column < mColumns; column++) {
+                bitmapsToRemove.remove(TextStyle.getTerminalBitmapNum(other.getStyle(column)));
             }
         }
 
@@ -738,7 +749,8 @@ public final class TerminalBuffer {
     }
 
     public synchronized void doTerminalBitmapsGC(int timeDelta) {
-        if (mTerminalBitmaps.isEmpty() || mTerminalBitmapsLastGC + timeDelta > SystemClock.uptimeMillis()) {
+        if (mTerminalBitmaps.isEmpty() || (mTerminalBitmapBytesSinceGC < BITMAP_GC_ALLOCATION_INTERVAL &&
+            mTerminalBitmapsLastGC + timeDelta > SystemClock.uptimeMillis())) {
             return;
         }
 
@@ -764,6 +776,7 @@ public final class TerminalBuffer {
         }
 
         mTerminalBitmapsLastGC = SystemClock.uptimeMillis();
+        mTerminalBitmapBytesSinceGC = 0;
     }
 
 }

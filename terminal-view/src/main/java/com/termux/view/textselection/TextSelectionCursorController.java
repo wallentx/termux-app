@@ -30,6 +30,7 @@ public class TextSelectionCursorController implements CursorController {
     private int mSelX1 = -1, mSelX2 = -1, mSelY1 = -1, mSelY2 = -1;
 
     private ActionMode mActionMode;
+    private int mToolbarAnchorOffset;
     public final int ACTION_COPY = 1;
     public final int ACTION_PASTE = 2;
     public final int ACTION_MORE = 3;
@@ -48,9 +49,10 @@ public class TextSelectionCursorController implements CursorController {
         mStartHandle.positionAtCursor(mSelX1, mSelY1, true);
         mEndHandle.positionAtCursor(mSelX2 + 1, mSelY2, true);
 
-        setActionModeCallBacks();
         mShowStartTime = System.currentTimeMillis();
         mIsSelectingText = true;
+        // ActionMode creation can synchronously query the current selection.
+        setActionModeCallBacks();
     }
 
     @Override
@@ -67,13 +69,12 @@ public class TextSelectionCursorController implements CursorController {
         mStartHandle.hide();
         mEndHandle.hide();
 
-        if (mActionMode != null) {
-            // This will hide the TextSelectionCursorController
-            mActionMode.finish();
-        }
-
+        ActionMode mode = mActionMode;
+        mActionMode = null;
         mSelX1 = mSelY1 = mSelX2 = mSelY2 = -1;
         mIsSelectingText = false;
+        // Detach first: finish() can synchronously call onDestroyActionMode().
+        if (mode != null) mode.finish();
 
         return true;
     }
@@ -108,6 +109,7 @@ public class TextSelectionCursorController implements CursorController {
     }
     
     public void setActionModeCallBacks() {
+        mToolbarAnchorOffset = 0;
         final ActionMode.Callback callback = new ActionMode.Callback() {
             @Override
             public boolean onCreateActionMode(ActionMode mode, Menu menu) {
@@ -159,6 +161,12 @@ public class TextSelectionCursorController implements CursorController {
 
             @Override
             public void onDestroyActionMode(ActionMode mode) {
+                if (mActionMode != mode) return;
+                mActionMode = null;
+                // Framework dismissal must bypass the long-press debounce and notify
+                // TerminalView so pending toolbar work and copy mode are cleared too.
+                mShowStartTime = 0;
+                terminalView.stopTextSelectionMode();
             }
 
         };
@@ -187,13 +195,13 @@ public class TextSelectionCursorController implements CursorController {
 
             @Override
             public void onDestroyActionMode(ActionMode mode) {
-                // Ignore.
+                callback.onDestroyActionMode(mode);
             }
 
             @Override
             public void onGetContentRect(ActionMode mode, View view, Rect outRect) {
                 int x1 = Math.round(mSelX1 * terminalView.mRenderer.getFontWidth());
-                int x2 = Math.round(mSelX2 * terminalView.mRenderer.getFontWidth());
+                int x2 = Math.round((mSelX2 + 1) * terminalView.mRenderer.getFontWidth());
                 int y1 = Math.round((mSelY1 - 1 - terminalView.getTopRow()) * terminalView.mRenderer.getFontLineSpacing());
                 int y2 = Math.round((mSelY2 + 1 - terminalView.getTopRow()) * terminalView.mRenderer.getFontLineSpacing());
 
@@ -203,15 +211,28 @@ public class TextSelectionCursorController implements CursorController {
                     x2 = tmp;
                 }
 
-                int terminalBottom = terminalView.getBottom();
+                // Callback2 requires coordinates local to the originating view.
+                int terminalBottom = terminalView.getHeight();
                 int top = y1 + mHandleHeight;
                 int bottom = y2 + mHandleHeight;
                 if (top > terminalBottom) top = terminalBottom;
                 if (bottom > terminalBottom) bottom = terminalBottom;
 
                 outRect.set(x1, top, x2, bottom);
+                // Only the toolbar anchor moves; selection cells and handles do not.
+                outRect.offset(0, -mToolbarAnchorOffset);
             }
         }, ActionMode.TYPE_FLOATING);
+    }
+
+    public void refreshActionModeContentRect() {
+        if (mActionMode == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+        // Android 17's RemoteFloatingToolbarPopup2 can claim SHOWN without a window.
+        // It suppresses identical requests; hide/show alone sends update(false), which
+        // also fails to lay out the missing toolbar. A one-pixel anchor change forces
+        // update(true), equivalent to the handle movement that recovers it on-device.
+        if (Build.VERSION.SDK_INT >= 37) mToolbarAnchorOffset = 1 - mToolbarAnchorOffset;
+        mActionMode.invalidateContentRect();
     }
 
     @Override
