@@ -114,12 +114,15 @@ jobs:
           apkanalyzer manifest target-sdk "$apk" | grep -x 37
           apkanalyzer manifest version-code "$apk" | grep -x 1000
           python3 - "$apk" <<'PY'
-          import pathlib, sys, zipfile
+          import hashlib, pathlib, sys, zipfile
           path = pathlib.Path(sys.argv[1])
           assert len(list(path.parent.glob('*.apk'))) == 1, 'Expected one APK'
           with zipfile.ZipFile(path) as apk:
               abis = {n.split('/')[1] for n in apk.namelist() if n.startswith('lib/') and n.endswith('.so')}
               assert abis == {'arm64-v8a'}, abis
+              assert hashlib.sha256(apk.read('assets/rish/rish_shizuku.dex')).hexdigest() == '1953c1fd9708904f8fc1f67774843b4cc3d03e5f2a578ff4d654d0625456bc28'
+              for name in ('termux-rish', 'LICENSE', 'NOTICE'):
+                  assert apk.read('assets/rish/' + name), name
           PY
       - name: Build sixel comparison harness from existing emulator classes
         if: env.BUILD_ALL_APKS != 'true'

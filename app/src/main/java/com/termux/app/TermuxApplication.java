@@ -70,6 +70,8 @@ public class TermuxApplication extends Application {
 
         if (isTermuxFilesDirectoryAccessible) {
             TermuxShellEnvironment.writeEnvironmentToFile(this);
+            if (new java.io.File(TermuxConstants.TERMUX_PREFIX_DIR, "bin").isDirectory())
+                BundledRishInstaller.install(this, TermuxConstants.TERMUX_PREFIX_DIR);
         }
     }
 
